@@ -37,24 +37,26 @@ end
 ------------------------------------------------------
 local AimbotConfig = {
     Enabled = false,
-    FOVRadius = 140,      -- tighter default FOV for precision
-    Smoothing = 0.55,     -- slightly faster by default
+    FOVRadius = 140,        -- default FOV
+    Smoothing = 0.6,        -- base smooth (we also scale with Accuracy)
     TargetPart = "Head",
     BindKey = Enum.KeyCode.E,
-    HoldToAim = true,     -- true = hold, false = toggle
+    HoldToAim = true,       -- true = hold, false = toggle
     DynamicFOV = true,
     MaxDistance = 800,
-    VisibleCheck = true,  -- only target visible players (line-of-sight)
+    VisibleCheck = true,    -- line-of-sight
+    Accuracy = 100,         -- 0–100%: how hard it locks onto target
 }
 
-local holdingKey = false          -- HOLD mode state
-local toggleAimingActive = false  -- TOGGLE mode state
+local holdingKey = false
+local toggleAimingActive = false
 
 print("[FrostHub DEBUG] Initial AimbotConfig:",
     "Enabled=", AimbotConfig.Enabled,
     "FOV=", AimbotConfig.FOVRadius,
     "TargetPart=", AimbotConfig.TargetPart,
-    "BindKey=", AimbotConfig.BindKey.Name
+    "BindKey=", AimbotConfig.BindKey.Name,
+    "Accuracy=", AimbotConfig.Accuracy
 )
 
 local ESPConfig = {
@@ -74,7 +76,7 @@ local NoclipConfig = {
 local Window = Rayfield:CreateWindow({
     Name = "WINTER HUB | v1.0",
     LoadingTitle = "Frost Hub",
-    LoadingSubtitle = "v1.3 DEBUG",
+    LoadingSubtitle = "v1.4 DEBUG",
     KeySystem = false,
     ConfigurationSaving = {
         Enabled = false,
@@ -92,7 +94,7 @@ MainTab:CreateSection("Welcome")
 
 MainTab:CreateParagraph({
     Title = "Frost Hub",
-    Content = "Simple clean interface with a legit-style aimbot, ESP, and noclip. Use the Aimbot tab to configure aim assist, the ESP tab for visual highlights, and the Noclip tab for wall-walk settings.",
+    Content = "Legit-style aimbot, ESP, and noclip. Aimbot tab = aim assist, ESP tab = visuals, Noclip tab = wall-walk. Accuracy slider lets you choose how strong the lock-on feels.",
 })
 
 ------------------------------------------------------
@@ -159,9 +161,9 @@ AimbotTab:CreateSlider({
     end,
 })
 
--- 5) Smoothing slider (0.02–1)
+-- 5) Smoothing slider (0.02–1 base)
 AimbotTab:CreateSlider({
-    Name = "Smoothing (speed)",
+    Name = "Base Smoothing (speed)",
     Range = {2, 100},
     Increment = 1,
     CurrentValue = math.floor(AimbotConfig.Smoothing * 100),
@@ -173,7 +175,21 @@ AimbotTab:CreateSlider({
     end,
 })
 
--- 6) Max distance slider
+-- 6) Accuracy / Precision slider (0–100%)
+AimbotTab:CreateSlider({
+    Name = "Accuracy / Lock-On %",
+    Range = {0, 100},
+    Increment = 1,
+    CurrentValue = AimbotConfig.Accuracy,
+    Flag = "Frost_Accuracy",
+    Callback = function(Value)
+        AimbotConfig.Accuracy = Value
+        playClick()
+        print("[FrostHub DEBUG] Accuracy changed to:", AimbotConfig.Accuracy .. "%")
+    end,
+})
+
+-- 7) Max distance slider
 AimbotTab:CreateSlider({
     Name = "Max Distance",
     Range = {100, 2000},
@@ -186,7 +202,7 @@ AimbotTab:CreateSlider({
     end,
 })
 
--- 7) Dynamic FOV toggle
+-- 8) Dynamic FOV toggle
 AimbotTab:CreateToggle({
     Name = "Dynamic FOV (scale with distance)",
     CurrentValue = AimbotConfig.DynamicFOV,
@@ -198,7 +214,7 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 8) Visible check toggle (for more legit & precise targeting)
+-- 9) Visible check toggle
 AimbotTab:CreateToggle({
     Name = "Visible Check (line of sight)",
     CurrentValue = AimbotConfig.VisibleCheck,
@@ -210,7 +226,7 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 9) Bind key info + change button (manual listener)
+-- 10) Bind key info + change button
 AimbotTab:CreateParagraph({
     Title = "Bind Key",
     Content = "Current bind: " .. AimbotConfig.BindKey.Name .. " (HOLD or TOGGLE depending on mode above). Click 'Change Bind' below and then press any key.",
@@ -228,7 +244,7 @@ AimbotTab:CreateButton({
     end,
 })
 
--- Listen for key input for bind change + aimbot hold/toggle
+-- Bind handling
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if waitingForKey and input.UserInputType == Enum.UserInputType.Keyboard then
         waitingForKey = false
@@ -323,7 +339,7 @@ NoclipTab:CreateSection("Noclip Settings")
 
 NoclipTab:CreateParagraph({
     Title = "Info",
-    Content = "Simple noclip: when enabled, your character's parts have collisions disabled so you can walk through walls and objects.",
+    Content = "Noclip constantly disables collisions on your character parts so you can walk through most walls/objects (works in many games like Flick, Rivals, etc.).",
 })
 
 NoclipTab:CreateToggle({
@@ -373,9 +389,8 @@ local function isVisible(fromPos, targetPart, ignoreList)
     return result.Instance:IsDescendantOf(targetPart.Parent)
 end
 
--- Universal-ish getMousePosition: supports FPS & third-person
+-- Get mouse/crosshair position (FPS & third-person friendly)
 local function getMouseVector2()
-    -- If Mouse is valid, use its Hit position projected to screen
     if Mouse and Mouse.Hit and Camera then
         local hitPos = Mouse.Hit.p
         local screenPos, onScreen = Camera:WorldToViewportPoint(hitPos)
@@ -384,13 +399,11 @@ local function getMouseVector2()
         end
     end
 
-    -- fallback: UserInputService mouse location
     local mouseLoc = UserInputService:GetMouseLocation()
     if mouseLoc then
         return Vector2.new(mouseLoc.X, mouseLoc.Y)
     end
 
-    -- final fallback: screen center
     if Camera then
         return Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     end
@@ -398,7 +411,7 @@ local function getMouseVector2()
     return Vector2.new(0, 0)
 end
 
--- Better, more universal & precise target selection
+-- Target selection (universal & precise, with stronger lock bias)
 local function getBestTarget()
     if not Camera then Camera = Workspace.CurrentCamera end
     local camera = Camera
@@ -430,8 +443,9 @@ local function getBestTarget()
 
                         if crosshairDist <= effectiveFOV then
                             if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
-                                -- Stronger weight on closeness to aim, lighter distance penalty
-                                local score = crosshairDist + (dist3D * 0.02)
+                                -- Stronger bias towards being closest to crosshair
+                                -- Distance penalty is low so aim feels sticky
+                                local score = crosshairDist^1.2 + (dist3D * 0.015)
                                 if score < bestScore then
                                     bestScore = score
                                     bestPlayer = plr
@@ -497,9 +511,8 @@ Players.PlayerAdded:Connect(createESPForPlayer)
 Players.PlayerRemoving:Connect(removeESPForPlayer)
 
 ------------------------------------------------------
--- NOCLIP SUPPORT
+-- NOCLIP SUPPORT (more aggressive)
 ------------------------------------------------------
--- Keep a list of character BaseParts so noclip is constantly enforced
 local CharacterParts = {}
 
 local function rebuildCharacterPartList(char)
@@ -516,10 +529,11 @@ end
 local function onCharacterAdded(char)
     rebuildCharacterPartList(char)
 
-    -- if noclip toggled on before respawn, re-apply
     if NoclipConfig.Enabled then
         for _, part in ipairs(CharacterParts) do
-            part.CanCollide = false
+            if part and part:IsA("BasePart") then
+                part.CanCollide = false
+            end
         end
     end
 end
@@ -553,7 +567,7 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- Aimbot aiming (universal & precise)
+    -- Aimbot aiming (uses Accuracy for stronger/weaker lock)
     --------------------------------------------------
     if AimbotConfig.Enabled and shouldAim then
         local targetPlayer = getBestTarget()
@@ -567,9 +581,17 @@ RunService.RenderStepped:Connect(function()
 
                 if toTarget.Magnitude > 1 then
                     local desiredCF = CFrame.new(camPos, camPos + toTarget)
-                    local speed = math.clamp(AimbotConfig.Smoothing, 0.02, 1)
-                    local alpha = math.clamp(speed * dt * 75, 0, 1)
 
+                    -- Accuracy 0–100 -> blend factor
+                    -- Higher Accuracy => stronger / snappier lock
+                    local accFactor = math.clamp(AimbotConfig.Accuracy / 100, 0, 1)
+
+                    -- We scale effective smoothing by accuracy (more accuracy = faster turn)
+                    local baseSpeed = math.clamp(AimbotConfig.Smoothing, 0.02, 1)
+                    local speed = baseSpeed + accFactor * 2  -- add extra power as accuracy increases
+                    local alpha = math.clamp(speed * dt * 50, 0, 1)
+
+                    -- If you set Accuracy to 100, this basically hard-snaps inside your smoothing limit
                     local angleDot = camCF.LookVector:Dot(toTarget.Unit)
                     if angleDot < 0.9999 then
                         camera.CFrame = camCF:Lerp(desiredCF, alpha)
@@ -580,7 +602,7 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- Noclip logic (more reliable)
+    -- Noclip logic (aggressively re-applies each frame)
     --------------------------------------------------
     if NoclipConfig.Enabled and LocalPlayer.Character then
         if #CharacterParts == 0 then
@@ -666,4 +688,4 @@ pcall(function()
     })
 end)
 
-print("[FrostHub DEBUG] Initialization complete (Rayfield UI with Aimbot, ESP, Noclip).")
+print("[FrostHub DEBUG] Initialization complete (Rayfield UI with stronger Aimbot, ESP, Noclip).")
