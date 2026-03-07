@@ -1,4 +1,4 @@
---// Frost Hub v1.3 – Debug Version (Simplified Aimbot, ESP, Bigger UI)
+--// Frost Hub v1.3 – Debug Version (Improved Aimbot, ESP, Bigger UI)
 
 ------------------------------------------------------
 -- Services & Player
@@ -304,15 +304,17 @@ AimInfo.Text = "Configure how the aim assist behaves. Hold the bind key to lock 
 AimInfo.Parent = AimbotPage
 
 ------------------------------------------------------
--- Aimbot Config (simplified)
+-- Aimbot Config (improved)
 ------------------------------------------------------
 local AimbotConfig = {
     Enabled = false,
     FOVRadius = 220,
-    Smoothing = 0.35,   -- 0.02–1 speed factor
+    Smoothing = 0.4,       -- 0.02–1 speed factor (slightly smoother)
     TargetPart = "Head",
     BindKey = Enum.KeyCode.E,
-    HoldToAim = true,   -- true = must hold key; false = toggle mode
+    HoldToAim = true,      -- true = must hold key; false = toggle mode
+    DynamicFOV = true,     -- scale FOV a bit with distance
+    MaxDistance = 800,     -- ignore targets further than this
 }
 
 print("[FrostHub DEBUG] Initial AimbotConfig:",
@@ -767,7 +769,7 @@ ESPTabButton.MouseButton1Click:Connect(function()
 end)
 
 ------------------------------------------------------
--- Aimbot Logic (simplified, no extra checks/prediction/FOV draw)
+-- Aimbot Logic (improved target selection & aiming)
 ------------------------------------------------------
 local function isAlive(plr)
     if not plr.Character then return false end
@@ -782,37 +784,55 @@ local function getTargetPart(plr)
     return char:FindFirstChild(AimbotConfig.TargetPart) or char:FindFirstChild("Head")
 end
 
-local function getClosestPlayerToMouse()
+-- Better target selection: combines screen distance, distance in 3D, and optional dynamic FOV.
+local function getBestTarget()
     local camera = Workspace.CurrentCamera
-    if not camera then
-        return nil
-    end
-
-    local closestPlayer
-    local closestDist = math.huge
+    if not camera then return nil end
 
     local mouseLoc = UserInputService:GetMouseLocation()
     local mousePos = Vector2.new(mouseLoc.X, mouseLoc.Y)
+
+    local bestPlayer
+    local bestScore = math.huge
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and isAlive(plr) then
             local part = getTargetPart(plr)
             if part then
-                local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
-                if onScreen and screenPos.Z > 0 then
-                    local target2D = Vector2.new(screenPos.X, screenPos.Y)
-                    local crosshairDist = (mousePos - target2D).Magnitude
+                local worldPos = part.Position
+                local dist3D = (worldPos - camera.CFrame.Position).Magnitude
 
-                    if crosshairDist <= AimbotConfig.FOVRadius and crosshairDist < closestDist then
-                        closestDist = crosshairDist
-                        closestPlayer = plr
+                -- ignore very far targets
+                if dist3D <= AimbotConfig.MaxDistance then
+                    local screenPos, onScreen = camera:WorldToViewportPoint(worldPos)
+                    if onScreen and screenPos.Z > 0 then
+                        local target2D = Vector2.new(screenPos.X, screenPos.Y)
+                        local crosshairDist = (mousePos - target2D).Magnitude
+
+                        -- dynamic FOV: farther targets get slightly smaller allowed radius
+                        local effectiveFOV = AimbotConfig.FOVRadius
+                        if AimbotConfig.DynamicFOV then
+                            -- scale FOV down a bit as distance grows (clamped)
+                            local scale = math.clamp(1 - (dist3D / (AimbotConfig.MaxDistance * 1.5)), 0.4, 1)
+                            effectiveFOV = effectiveFOV * scale
+                        end
+
+                        if crosshairDist <= effectiveFOV then
+                            -- score mixes crosshair distance and distance to avoid weird targets
+                            local score = crosshairDist + (dist3D * 0.05) -- tweak 0.05 for stronger/softer distance effect
+
+                            if score < bestScore then
+                                bestScore = score
+                                bestPlayer = plr
+                            end
+                        end
                     end
                 end
             end
         end
     end
 
-    return closestPlayer
+    return bestPlayer
 end
 
 ------------------------------------------------------
@@ -904,23 +924,27 @@ RunService.RenderStepped:Connect(function()
         shouldAim = toggleAimingActive
     end
 
-    -- Aimbot aiming (no FOV circle, no prediction, no extra checks)
+    -- Aimbot aiming (improved smoothing & target selection)
     if AimbotConfig.Enabled and shouldAim then
-        local targetPlayer = getClosestPlayerToMouse()
+        local targetPlayer = getBestTarget()
         if targetPlayer and targetPlayer.Character then
             local part = getTargetPart(targetPlayer)
             if part then
                 local targetPos = part.Position
                 local camCF = camera.CFrame
-                local toTarget = (targetPos - camCF.Position)
+                local camPos = camCF.Position
+                local toTarget = (targetPos - camPos)
+
                 if toTarget.Magnitude > 1 then
-                    local desiredCF = CFrame.new(camCF.Position, camCF.Position + toTarget)
+                    local desiredCF = CFrame.new(camPos, camPos + toTarget)
 
+                    -- speed scaled by smoothing and frame rate
                     local speed = math.clamp(AimbotConfig.Smoothing, 0.02, 1)
-                    local alpha = math.clamp(speed * dt * 60, 0, 1)
+                    local alpha = math.clamp(speed * dt * 75, 0, 1) -- a bit higher factor for snappier feel
 
-                    local angleDiff = (camCF.LookVector:Dot(toTarget.Unit))
-                    if angleDiff < 0.999 then
+                    -- small angle check to avoid jitter when already on target
+                    local angleDot = camCF.LookVector:Dot(toTarget.Unit)
+                    if angleDot < 0.9999 then
                         camera.CFrame = camCF:Lerp(desiredCF, alpha)
                     end
                 end
