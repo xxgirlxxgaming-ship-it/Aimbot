@@ -39,7 +39,7 @@ local AimbotConfig = {
     Enabled = false,
     FOVRadius = 140,        -- default FOV
     Smoothing = 0.6,        -- base smooth (we also scale with Accuracy)
-    TargetPart = "Head",
+    TargetPart = "Head",    -- Head or HumanoidRootPart
     BindKey = Enum.KeyCode.E,
     HoldToAim = true,       -- true = hold, false = toggle
     DynamicFOV = true,
@@ -89,9 +89,7 @@ local Window = Rayfield:CreateWindow({
 -- MAIN TAB (INFO)
 ------------------------------------------------------
 local MainTab = Window:CreateTab("Main", 4483362458)
-
 MainTab:CreateSection("Welcome")
-
 MainTab:CreateParagraph({
     Title = "Frost Hub",
     Content = "Legit-style aimbot, ESP, and noclip. Aimbot tab = aim assist, ESP tab = visuals, Noclip tab = wall-walk. Accuracy slider lets you choose how strong the lock-on feels.",
@@ -135,14 +133,19 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 3) Target Part dropdown
+-- 3) Target Part dropdown (Head / HumanoidRootPart)
 AimbotTab:CreateDropdown({
     Name = "Target Part",
     Options = {"Head", "HumanoidRootPart"},
     CurrentOption = AimbotConfig.TargetPart,
     Flag = "Frost_TargetPart",
     Callback = function(Option)
-        AimbotConfig.TargetPart = Option
+        -- normalize: make sure we only accept valid strings
+        if Option == "Head" or Option == "HumanoidRootPart" then
+            AimbotConfig.TargetPart = Option
+        else
+            AimbotConfig.TargetPart = "Head"
+        end
         playClick()
         print("[FrostHub DEBUG] TargetPart switched to:", AimbotConfig.TargetPart)
     end,
@@ -183,7 +186,7 @@ AimbotTab:CreateSlider({
     CurrentValue = AimbotConfig.Accuracy,
     Flag = "Frost_Accuracy",
     Callback = function(Value)
-        AimbotConfig.Accuracy = Value
+        AimbotConfig.Accuracy = math.clamp(Value, 0, 100)
         playClick()
         print("[FrostHub DEBUG] Accuracy changed to:", AimbotConfig.Accuracy .. "%")
     end,
@@ -366,7 +369,25 @@ end
 local function getTargetPart(plr)
     local char = plr.Character
     if not char then return nil end
-    return char:FindFirstChild(AimbotConfig.TargetPart) or char:FindFirstChild("Head")
+
+    -- Always try selected target part first (Head or HumanoidRootPart)
+    local target = char:FindFirstChild(AimbotConfig.TargetPart)
+    if target and target:IsA("BasePart") then
+        return target
+    end
+
+    -- Fallbacks: HRP then Head
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hrp and hrp:IsA("BasePart") then
+        return hrp
+    end
+
+    local head = char:FindFirstChild("Head")
+    if head and head:IsA("BasePart") then
+        return head
+    end
+
+    return nil
 end
 
 -- Raycast params cache for visibility check
@@ -444,7 +465,6 @@ local function getBestTarget()
                         if crosshairDist <= effectiveFOV then
                             if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
                                 -- Stronger bias towards being closest to crosshair
-                                -- Distance penalty is low so aim feels sticky
                                 local score = crosshairDist^1.2 + (dist3D * 0.015)
                                 if score < bestScore then
                                     bestScore = score
@@ -511,7 +531,7 @@ Players.PlayerAdded:Connect(createESPForPlayer)
 Players.PlayerRemoving:Connect(removeESPForPlayer)
 
 ------------------------------------------------------
--- NOCLIP SUPPORT (more aggressive)
+-- NOCLIP SUPPORT (more aggressive + extra anti-bump)
 ------------------------------------------------------
 local CharacterParts = {}
 
@@ -586,12 +606,12 @@ RunService.RenderStepped:Connect(function()
                     -- Higher Accuracy => stronger / snappier lock
                     local accFactor = math.clamp(AimbotConfig.Accuracy / 100, 0, 1)
 
-                    -- We scale effective smoothing by accuracy (more accuracy = faster turn)
+                    -- Scale effective smoothing by accuracy (more accuracy = faster turn)
                     local baseSpeed = math.clamp(AimbotConfig.Smoothing, 0.02, 1)
-                    local speed = baseSpeed + accFactor * 2  -- add extra power as accuracy increases
+                    local speed = baseSpeed + accFactor * 2
                     local alpha = math.clamp(speed * dt * 50, 0, 1)
 
-                    -- If you set Accuracy to 100, this basically hard-snaps inside your smoothing limit
+                    -- If Accuracy is 0, this still moves slowly; if 100, it’s very sticky
                     local angleDot = camCF.LookVector:Dot(toTarget.Unit)
                     if angleDot < 0.9999 then
                         camera.CFrame = camCF:Lerp(desiredCF, alpha)
@@ -605,14 +625,31 @@ RunService.RenderStepped:Connect(function()
     -- Noclip logic (aggressively re-applies each frame)
     --------------------------------------------------
     if NoclipConfig.Enabled and LocalPlayer.Character then
+        local char = LocalPlayer.Character
+
         if #CharacterParts == 0 then
-            rebuildCharacterPartList(LocalPlayer.Character)
+            rebuildCharacterPartList(char)
         end
 
+        -- Turn off collisions
         for _, part in ipairs(CharacterParts) do
             if part and part:IsA("BasePart") then
                 part.CanCollide = false
             end
+        end
+
+        -- Extra help: try to prevent physics from forcing you back
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            -- Disable common states that cause bumping
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+            hum.PlatformStand = false
+        end
+
+        -- If sitting in a seat, break weld
+        local seat = char:FindFirstChildWhichIsA("Seat", true)
+        if seat and seat.Occupant then
+            seat.Occupant = nil
         end
     end
 
