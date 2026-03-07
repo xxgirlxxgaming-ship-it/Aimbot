@@ -9,6 +9,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 print("[FrostHub DEBUG] LocalPlayer:", LocalPlayer and LocalPlayer.Name or "nil")
@@ -30,17 +31,18 @@ local function playClick()
 end
 
 ------------------------------------------------------
--- AIMBOT / ESP CONFIG
+-- AIMBOT / ESP / NOCLIP CONFIG
 ------------------------------------------------------
 local AimbotConfig = {
     Enabled = false,
-    FOVRadius = 220,
-    Smoothing = 0.4,       -- 0.02–1 speed factor
+    FOVRadius = 140,      -- tighter default FOV for more precision (was 220)
+    Smoothing = 0.55,     -- slightly faster by default
     TargetPart = "Head",
     BindKey = Enum.KeyCode.E,
-    HoldToAim = true,      -- true = hold, false = toggle
+    HoldToAim = true,     -- true = hold, false = toggle
     DynamicFOV = true,
     MaxDistance = 800,
+    VisibleCheck = true,  -- NEW: only target visible players (line-of-sight)
 }
 
 local holdingKey = false          -- HOLD mode state
@@ -58,6 +60,10 @@ local ESPConfig = {
     TeamCheck = false,
     ShowNames = true,
     ShowBoxes = true,
+}
+
+local NoclipConfig = {
+    Enabled = false,
 }
 
 ------------------------------------------------------
@@ -84,7 +90,7 @@ MainTab:CreateSection("Welcome")
 
 MainTab:CreateParagraph({
     Title = "Frost Hub",
-    Content = "Simple clean interface with a legit-style aimbot and ESP. Use the Aimbot tab to configure aim assist and the ESP tab for visual highlights. Hold the bind key to lock onto the nearest target in your FOV.",
+    Content = "Simple clean interface with a legit-style aimbot, ESP, and noclip. Use the Aimbot tab to configure aim assist, the ESP tab for visual highlights, and the Noclip tab for wall-walk settings.",
 })
 
 ------------------------------------------------------
@@ -193,7 +199,19 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 8) Bind key info + change button (manual listener)
+-- 8) Visible check toggle (for more legit & precise targeting)
+AimbotTab:CreateToggle({
+    Name = "Visible Check (line of sight)",
+    CurrentValue = AimbotConfig.VisibleCheck,
+    Flag = "Frost_VisibleCheck",
+    Callback = function(Value)
+        AimbotConfig.VisibleCheck = Value
+        playClick()
+        print("[FrostHub DEBUG] VisibleCheck:", AimbotConfig.VisibleCheck)
+    end,
+})
+
+-- 9) Bind key info + change button (manual listener)
 AimbotTab:CreateParagraph({
     Title = "Bind Key",
     Content = "Current bind: " .. AimbotConfig.BindKey.Name .. " (HOLD or TOGGLE depending on mode above). Click 'Change Bind' below and then press any key.",
@@ -304,7 +322,29 @@ ESPTab:CreateToggle({
 })
 
 ------------------------------------------------------
--- AIMBOT / ESP CORE LOGIC (unchanged behaviour)
+-- NOCLIP TAB
+------------------------------------------------------
+local NoclipTab = Window:CreateTab("Noclip", 4483362458)
+NoclipTab:CreateSection("Noclip Settings")
+
+NoclipTab:CreateParagraph({
+    Title = "Info",
+    Content = "Simple noclip: when enabled, your character's parts have collisions disabled so you can walk through walls and objects.",
+})
+
+NoclipTab:CreateToggle({
+    Name = "Noclip Enabled",
+    CurrentValue = NoclipConfig.Enabled,
+    Flag = "Frost_NoclipEnabled",
+    Callback = function(Value)
+        NoclipConfig.Enabled = Value
+        playClick()
+        print("[FrostHub DEBUG] Noclip Enabled:", NoclipConfig.Enabled)
+    end,
+})
+
+------------------------------------------------------
+-- AIMBOT / ESP CORE LOGIC
 ------------------------------------------------------
 local function isAlive(plr)
     if not plr.Character then return false end
@@ -319,7 +359,28 @@ local function getTargetPart(plr)
     return char:FindFirstChild(AimbotConfig.TargetPart) or char:FindFirstChild("Head")
 end
 
--- Better target selection
+-- Raycast params cache for visibility check
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+local function isVisible(fromPos, targetPart, ignoreList)
+    if not AimbotConfig.VisibleCheck then
+        return true
+    end
+
+    local dir = (targetPart.Position - fromPos)
+    rayParams.FilterDescendantsInstances = ignoreList
+
+    local result = Workspace:Raycast(fromPos, dir, rayParams)
+    if not result then
+        return true
+    end
+
+    -- hit the same character we're targeting => considered visible
+    return result.Instance:IsDescendantOf(targetPart.Parent)
+end
+
+-- Better, more precise target selection
 local function getBestTarget()
     local camera = Workspace.CurrentCamera
     if not camera then return nil end
@@ -350,10 +411,15 @@ local function getBestTarget()
                         end
 
                         if crosshairDist <= effectiveFOV then
-                            local score = crosshairDist + (dist3D * 0.05)
-                            if score < bestScore then
-                                bestScore = score
-                                bestPlayer = plr
+                            -- line-of-sight check for more legit + precise targeting
+                            local char = plr.Character
+                            if char and isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
+                                -- score is mostly based on crosshair distance, distance has smaller weight
+                                local score = crosshairDist + (dist3D * 0.02) -- was 0.05, now more aim-precise
+                                if score < bestScore then
+                                    bestScore = score
+                                    bestPlayer = plr
+                                end
                             end
                         end
                     end
@@ -435,7 +501,9 @@ RunService.RenderStepped:Connect(function()
         shouldAim = toggleAimingActive
     end
 
-    -- Aimbot aiming
+    --------------------------------------------------
+    -- Aimbot aiming (more precise)
+    --------------------------------------------------
     if AimbotConfig.Enabled and shouldAim then
         local targetPlayer = getBestTarget()
         if targetPlayer and targetPlayer.Character then
@@ -460,7 +528,21 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
+    --------------------------------------------------
+    -- Noclip logic
+    --------------------------------------------------
+    if NoclipConfig.Enabled and LocalPlayer.Character then
+        local char = LocalPlayer.Character
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end
+
+    --------------------------------------------------
     -- ESP update
+    --------------------------------------------------
     if Drawing and ESPConfig.Enabled then
         for plr, data in pairs(ESPObjects) do
             local char = plr.Character
@@ -525,9 +607,9 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "Frost Hub (DEBUG)",
-        Text = "Loaded Aimbot + ESP (bind: " .. AimbotConfig.BindKey.Name .. ")",
+        Text = "Loaded Aimbot + ESP + Noclip (aim bind: " .. AimbotConfig.BindKey.Name .. ")",
         Duration = 5,
     })
 end)
 
-print("[FrostHub DEBUG] Initialization complete (Rayfield UI).")
+print("[FrostHub DEBUG] Initialization complete (Rayfield UI with Aimbot, ESP, Noclip).")
