@@ -1,0 +1,1265 @@
+--// Frost Hub v1.3 – Debug Version (Enhanced Aimbot + ESP, Bigger UI)
+
+------------------------------------------------------
+-- Services & Player
+------------------------------------------------------
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+print("[FrostHub DEBUG] LocalPlayer:", LocalPlayer and LocalPlayer.Name or "nil")
+
+------------------------------------------------------
+-- Safe click sound (optional)
+------------------------------------------------------
+local function playClick()
+    pcall(function()
+        local s = Instance.new("Sound")
+        s.SoundId = "rbxassetid://2865227271"
+        s.Volume = 0.5
+        s.Parent = game:GetService("SoundService")
+        s:Play()
+        s.Ended:Connect(function()
+            s:Destroy()
+        end)
+    end)
+end
+
+------------------------------------------------------
+-- GUI Parent (PlayerGui or CoreGui)
+------------------------------------------------------
+local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+if not playerGui then
+    print("[FrostHub DEBUG] PlayerGui not found immediately, waiting...")
+    local ok
+    ok, playerGui = pcall(function()
+        return LocalPlayer:WaitForChild("PlayerGui", 10)
+    end)
+    print("[FrostHub DEBUG] WaitForChild PlayerGui ok?", ok, "=>", playerGui)
+end
+
+local parentGui = playerGui or CoreGui
+print("[FrostHub DEBUG] Using parentGui:", parentGui.Name)
+
+-- Destroy any previous FrostHub
+local old = parentGui:FindFirstChild("FrostHubGUI")
+if old then
+    print("[FrostHub DEBUG] Old FrostHubGUI found, destroying...")
+    old:Destroy()
+end
+
+------------------------------------------------------
+-- Root ScreenGui
+------------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FrostHubGUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = parentGui
+print("[FrostHub DEBUG] ScreenGui created under", parentGui.Name)
+
+------------------------------------------------------
+-- Main Window (ABOUT 2× BIGGER)
+------------------------------------------------------
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+-- previously 650x400 – roughly doubled to 1100x700
+MainFrame.Size = UDim2.new(0, 1100, 0, 700)
+MainFrame.Position = UDim2.new(0.5, -550, 0.5, -350)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 20, 35)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.Parent = MainFrame
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(120, 180, 255)
+MainStroke.Thickness = 2
+MainStroke.Transparency = 0.3
+MainStroke.Parent = MainFrame
+
+------------------------------------------------------
+-- Top Bar
+------------------------------------------------------
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+TopBar.BackgroundColor3 = Color3.fromRGB(20, 30, 55)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+
+local TopCorner = Instance.new("UICorner")
+TopCorner.CornerRadius = UDim.new(0, 12)
+TopCorner.Parent = TopBar
+
+local Title = Instance.new("TextLabel")
+Title.BackgroundTransparency = 1
+Title.Size = UDim2.new(0.6, 0, 1, 0)
+Title.Position = UDim2.new(0, 14, 0, 0)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 22
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Text = "Frost Hub"
+Title.TextColor3 = Color3.fromRGB(220, 235, 255)
+Title.Parent = TopBar
+
+local Version = Instance.new("TextLabel")
+Version.BackgroundTransparency = 1
+Version.Size = UDim2.new(0.4, -14, 1, 0)
+Version.Position = UDim2.new(0.6, 0, 0, 0)
+Version.Font = Enum.Font.Gotham
+Version.TextSize = 16
+Version.TextXAlignment = Enum.TextXAlignment.Right
+Version.Text = "v1.3 (DEBUG)"
+Version.TextColor3 = Color3.fromRGB(160, 200, 255)
+Version.Parent = TopBar
+
+------------------------------------------------------
+-- Left Tab Column (taller + a bit wider)
+------------------------------------------------------
+local TabColumn = Instance.new("Frame")
+TabColumn.Name = "TabColumn"
+TabColumn.Size = UDim2.new(0, 220, 1, -40)
+TabColumn.Position = UDim2.new(0, 0, 0, 40)
+TabColumn.BackgroundColor3 = Color3.fromRGB(18, 26, 45)
+TabColumn.BorderSizePixel = 0
+TabColumn.Parent = MainFrame
+
+local TabCorner = Instance.new("UICorner")
+TabCorner.CornerRadius = UDim.new(0, 12)
+TabCorner.Parent = TabColumn
+
+local TabLayout = Instance.new("UIListLayout")
+TabLayout.FillDirection = Enum.FillDirection.Vertical
+TabLayout.Padding = UDim.new(0, 8)
+TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TabLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+TabLayout.Parent = TabColumn
+
+local TabPadding = Instance.new("UIPadding")
+TabPadding.PaddingTop = UDim.new(0, 16)
+TabPadding.PaddingLeft = UDim.new(0, 12)
+TabPadding.PaddingRight = UDim.new(0, 12)
+TabPadding.Parent = TabColumn
+
+------------------------------------------------------
+-- Right Content Area (bigger)
+------------------------------------------------------
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Size = UDim2.new(1, -240, 1, -56)
+ContentFrame.Position = UDim2.new(0, 240, 0, 48)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = MainFrame
+
+local PagesFolder = Instance.new("Folder")
+PagesFolder.Name = "PagesFolder"
+PagesFolder.Parent = ContentFrame
+
+------------------------------------------------------
+-- Tab Helpers
+------------------------------------------------------
+local function createTabButton(name)
+    local btn = Instance.new("TextButton")
+    btn.Name = name .. "TabButton"
+    btn.Size = UDim2.new(1, 0, 0, 40)
+    btn.BackgroundColor3 = Color3.fromRGB(25, 35, 60)
+    btn.AutoButtonColor = false
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 18
+    btn.TextColor3 = Color3.fromRGB(190, 215, 255)
+    btn.Text = name
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = btn
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(80, 140, 220)
+    stroke.Thickness = 1
+    stroke.Transparency = 0.5
+    stroke.Parent = btn
+
+    btn.Parent = TabColumn
+    print("[FrostHub DEBUG] Tab button created:", name)
+    return btn
+end
+
+local function createPage(name)
+    local frame = Instance.new("Frame")
+    frame.Name = name .. "Page"
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(16, 24, 42)
+    frame.BorderSizePixel = 0
+    frame.Visible = false
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = frame
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 16)
+    padding.PaddingLeft = UDim.new(0, 20)
+    padding.PaddingRight = UDim.new(0, 20)
+    padding.PaddingBottom = UDim.new(0, 16)
+    padding.Parent = frame
+
+    frame.Parent = PagesFolder
+    print("[FrostHub DEBUG] Page created:", name .. "Page")
+    return frame
+end
+
+local CurrentPage
+
+local function showPage(name)
+    print("[FrostHub DEBUG] showPage called with:", name)
+    for _, child in ipairs(PagesFolder:GetChildren()) do
+        if child:IsA("Frame") then
+            child.Visible = (child.Name == name .. "Page")
+        end
+    end
+    for _, btn in ipairs(TabColumn:GetChildren()) do
+        if btn:IsA("TextButton") then
+            if btn.Name == name .. "TabButton" then
+                btn.BackgroundColor3 = Color3.fromRGB(35, 55, 90)
+            else
+                btn.BackgroundColor3 = Color3.fromRGB(25, 35, 60)
+            end
+        end
+    end
+    CurrentPage = name
+end
+
+------------------------------------------------------
+-- MAIN TAB
+------------------------------------------------------
+local MainTabButton = createTabButton("Main")
+local MainPage = createPage("Main")
+
+local MainTitle = Instance.new("TextLabel")
+MainTitle.BackgroundTransparency = 1
+MainTitle.Size = UDim2.new(1, 0, 0, 32)
+MainTitle.Font = Enum.Font.GothamBold
+MainTitle.TextSize = 26
+MainTitle.TextXAlignment = Enum.TextXAlignment.Left
+MainTitle.Text = "Welcome to Frost Hub"
+MainTitle.TextColor3 = Color3.fromRGB(220, 235, 255)
+MainTitle.Parent = MainPage
+
+local MainDesc = Instance.new("TextLabel")
+MainDesc.BackgroundTransparency = 1
+MainDesc.Size = UDim2.new(1, 0, 0, 120)
+MainDesc.Position = UDim2.new(0, 0, 0, 40)
+MainDesc.Font = Enum.Font.Gotham
+MainDesc.TextSize = 18
+MainDesc.TextWrapped = true
+MainDesc.TextXAlignment = Enum.TextXAlignment.Left
+MainDesc.TextYAlignment = Enum.TextYAlignment.Top
+MainDesc.TextColor3 = Color3.fromRGB(185, 205, 235)
+MainDesc.Text = "Simple clean interface with a legit-style aimbot and ESP. Use the Aimbot tab to configure aim assist and the ESP tab for visual highlights. Hold the bind key to lock onto the nearest target in your FOV."
+MainDesc.Parent = MainPage
+
+MainTabButton.MouseButton1Click:Connect(function()
+    print("[FrostHub DEBUG] Main tab clicked")
+    playClick()
+    showPage("Main")
+end)
+
+------------------------------------------------------
+-- AIMBOT TAB
+------------------------------------------------------
+local AimbotTabButton = createTabButton("Aimbot")
+local AimbotPage = createPage("Aimbot")
+
+local AimTitle = Instance.new("TextLabel")
+AimTitle.BackgroundTransparency = 1
+AimTitle.Size = UDim2.new(1, 0, 0, 32)
+AimTitle.Font = Enum.Font.GothamBold
+AimTitle.TextSize = 26
+AimTitle.TextXAlignment = Enum.TextXAlignment.Left
+AimTitle.Text = "Aimbot Settings"
+AimTitle.TextColor3 = Color3.fromRGB(220, 235, 255)
+AimTitle.Parent = AimbotPage
+
+local AimInfo = Instance.new("TextLabel")
+AimInfo.BackgroundTransparency = 1
+AimInfo.Size = UDim2.new(1, 0, 0, 70)
+AimInfo.Position = UDim2.new(0, 0, 0, 40)
+AimInfo.Font = Enum.Font.Gotham
+AimInfo.TextSize = 18
+AimInfo.TextWrapped = true
+AimInfo.TextXAlignment = Enum.TextXAlignment.Left
+AimInfo.TextYAlignment = Enum.TextYAlignment.Top
+AimInfo.TextColor3 = Color3.fromRGB(185, 205, 235)
+AimInfo.Text = "Configure how the aim assist behaves. Hold the bind key to lock onto the best target in your FOV based on your filters."
+AimInfo.Parent = AimbotPage
+
+------------------------------------------------------
+-- Aimbot Config (improved behaviour)
+------------------------------------------------------
+local AimbotConfig = {
+    Enabled = false,
+    TeamCheck = false,
+    FOVRadius = 220,             -- slightly larger default for big screens
+    Smoothing = 0.35,            -- now treated as speed factor 0.02–1
+    TargetPart = "Head",
+    BindKey = Enum.KeyCode.E,
+
+    DrawFOV = true,
+    VisibleCheck = true,
+    AimDowned = true,
+    Prediction = true,
+    PredictionStrength = 0.14,
+    Priority = "ClosestToCrosshair", -- or "ClosestDistance"
+}
+
+print("[FrostHub DEBUG] Initial AimbotConfig:",
+    "Enabled=", AimbotConfig.Enabled,
+    "TeamCheck=", AimbotConfig.TeamCheck,
+    "FOV=", AimbotConfig.FOVRadius,
+    "TargetPart=", AimbotConfig.TargetPart,
+    "BindKey=", AimbotConfig.BindKey.Name
+)
+
+------------------------------------------------------
+-- AIMBOT UI ELEMENTS (spread out, scaled up)
+------------------------------------------------------
+-- 1) Enable Toggle
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Size = UDim2.new(0, 260, 0, 44)
+ToggleButton.Position = UDim2.new(0, 0, 0, 120)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.Font = Enum.Font.Gotham
+ToggleButton.TextSize = 20
+ToggleButton.Text = "Aimbot: OFF"
+ToggleButton.Parent = AimbotPage
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(0, 10)
+ToggleCorner.Parent = ToggleButton
+
+local function updateToggle()
+    ToggleButton.Text = AimbotConfig.Enabled and "Aimbot: ON" or "Aimbot: OFF"
+    ToggleButton.BackgroundColor3 = AimbotConfig.Enabled and Color3.fromRGB(40, 120, 60) or Color3.fromRGB(120, 40, 40)
+    print("[FrostHub DEBUG] Aimbot Enabled state changed to:", AimbotConfig.Enabled)
+end
+
+ToggleButton.MouseButton1Click:Connect(function()
+    AimbotConfig.Enabled = not AimbotConfig.Enabled
+    playClick()
+    updateToggle()
+end)
+
+------------------------------------------------------
+-- 2) FOV Radius Slider + Label
+------------------------------------------------------
+local FOVLabel = Instance.new("TextLabel")
+FOVLabel.BackgroundTransparency = 1
+FOVLabel.Size = UDim2.new(0, 360, 0, 24)
+FOVLabel.Position = UDim2.new(0, 0, 0, 180)
+FOVLabel.Font = Enum.Font.Gotham
+FOVLabel.TextSize = 18
+FOVLabel.TextXAlignment = Enum.TextXAlignment.Left
+FOVLabel.TextColor3 = Color3.fromRGB(185, 205, 235)
+FOVLabel.Text = "FOV Radius: " .. AimbotConfig.FOVRadius
+FOVLabel.Parent = AimbotPage
+
+local FOVSliderBack = Instance.new("Frame")
+FOVSliderBack.Size = UDim2.new(0, 360, 0, 10)
+FOVSliderBack.Position = UDim2.new(0, 0, 0, 210)
+FOVSliderBack.BackgroundColor3 = Color3.fromRGB(25, 35, 60)
+FOVSliderBack.BorderSizePixel = 0
+FOVSliderBack.Parent = AimbotPage
+
+local FOVSliderCorner = Instance.new("UICorner")
+FOVSliderCorner.CornerRadius = UDim.new(0, 5)
+FOVSliderCorner.Parent = FOVSliderBack
+
+local FOVFill = Instance.new("Frame")
+FOVFill.Size = UDim2.new(0, math.clamp(AimbotConfig.FOVRadius, 40, 900) / 900 * 360, 1, 0)
+FOVFill.BackgroundColor3 = Color3.fromRGB(90, 150, 255)
+FOVFill.BorderSizePixel = 0
+FOVFill.Parent = FOVSliderBack
+
+local FOVFillCorner = Instance.new("UICorner")
+FOVFillCorner.CornerRadius = UDim.new(0, 5)
+FOVFillCorner.Parent = FOVFill
+
+local draggingFOV = false
+
+local function updateFOVLabelAndBar()
+    FOVLabel.Text = "FOV Radius: " .. tostring(AimbotConfig.FOVRadius)
+    FOVFill.Size = UDim2.new(0, (AimbotConfig.FOVRadius / 900) * 360, 1, 0)
+    print("[FrostHub DEBUG] FOVRadius changed to:", AimbotConfig.FOVRadius)
+end
+
+FOVSliderBack.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingFOV = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingFOV = false
+    end
+end)
+
+------------------------------------------------------
+-- 3) Smoothing Slider (interpreted as speed)
+------------------------------------------------------
+local SmoothLabel = Instance.new("TextLabel")
+SmoothLabel.BackgroundTransparency = 1
+SmoothLabel.Size = UDim2.new(0, 360, 0, 24)
+SmoothLabel.Position = UDim2.new(0, 0, 0, 240)
+SmoothLabel.Font = Enum.Font.Gotham
+SmoothLabel.TextSize = 18
+SmoothLabel.TextXAlignment = Enum.TextXAlignment.Left
+SmoothLabel.TextColor3 = Color3.fromRGB(185, 205, 235)
+SmoothLabel.Text = "Smoothing (speed): " .. tostring(AimbotConfig.Smoothing)
+SmoothLabel.Parent = AimbotPage
+
+local SmoothBack = Instance.new("Frame")
+SmoothBack.Size = UDim2.new(0, 360, 0, 10)
+SmoothBack.Position = UDim2.new(0, 0, 0, 270)
+SmoothBack.BackgroundColor3 = Color3.fromRGB(25, 35, 60)
+SmoothBack.BorderSizePixel = 0
+SmoothBack.Parent = AimbotPage
+
+local SmoothCorner = Instance.new("UICorner")
+SmoothCorner.CornerRadius = UDim.new(0, 5)
+SmoothCorner.Parent = SmoothBack
+
+local SmoothFill = Instance.new("Frame")
+SmoothFill.Size = UDim2.new(0, AimbotConfig.Smoothing * 360, 1, 0)
+SmoothFill.BackgroundColor3 = Color3.fromRGB(90, 255, 170)
+SmoothFill.BorderSizePixel = 0
+SmoothFill.Parent = SmoothBack
+
+local SmoothFillCorner = Instance.new("UICorner")
+SmoothFillCorner.CornerRadius = UDim.new(0, 5)
+SmoothFillCorner.Parent = SmoothFill
+
+local draggingSmooth = false
+
+local function updateSmoothLabelAndBar()
+    SmoothLabel.Text = "Smoothing (speed): " .. string.format("%.2f", AimbotConfig.Smoothing)
+    SmoothFill.Size = UDim2.new(0, AimbotConfig.Smoothing * 360, 1, 0)
+    print("[FrostHub DEBUG] Smoothing changed to:", AimbotConfig.Smoothing)
+end
+
+SmoothBack.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingSmooth = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingSmooth = false
+    end
+end)
+
+------------------------------------------------------
+-- 4–11: Toggles and options (same as before, just shifted right & bigger)
+------------------------------------------------------
+
+-- 4) Team Check
+local TeamCheckButton = Instance.new("TextButton")
+TeamCheckButton.Size = UDim2.new(0, 260, 0, 30)
+TeamCheckButton.Position = UDim2.new(0, 420, 0, 120)
+TeamCheckButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+TeamCheckButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+TeamCheckButton.Font = Enum.Font.Gotham
+TeamCheckButton.TextSize = 18
+TeamCheckButton.Text = "TeamCheck: OFF"
+TeamCheckButton.Parent = AimbotPage
+
+local TeamCorner = Instance.new("UICorner")
+TeamCorner.CornerRadius = UDim.new(0, 8)
+TeamCorner.Parent = TeamCheckButton
+
+local function updateTeamCheckText()
+    TeamCheckButton.Text = "TeamCheck: " .. (AimbotConfig.TeamCheck and "ON" or "OFF")
+    print("[FrostHub DEBUG] TeamCheck state changed to:", AimbotConfig.TeamCheck)
+end
+
+TeamCheckButton.MouseButton1Click:Connect(function()
+    AimbotConfig.TeamCheck = not AimbotConfig.TeamCheck
+    playClick()
+    updateTeamCheckText()
+end)
+
+-- 5) Visibility Check
+local VisButton = Instance.new("TextButton")
+VisButton.Size = UDim2.new(0, 260, 0, 30)
+VisButton.Position = UDim2.new(0, 420, 0, 160)
+VisButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+VisButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+VisButton.Font = Enum.Font.Gotham
+VisButton.TextSize = 18
+VisButton.Text = "Visible Check: ON"
+VisButton.Parent = AimbotPage
+
+local VisCorner = Instance.new("UICorner")
+VisCorner.CornerRadius = UDim.new(0, 8)
+VisCorner.Parent = VisButton
+
+local function updateVisText()
+    VisButton.Text = "Visible Check: " .. (AimbotConfig.VisibleCheck and "ON" or "OFF")
+    print("[FrostHub DEBUG] VisibleCheck:", AimbotConfig.VisibleCheck)
+end
+
+VisButton.MouseButton1Click:Connect(function()
+    AimbotConfig.VisibleCheck = not AimbotConfig.VisibleCheck
+    playClick()
+    updateVisText()
+end)
+
+-- 6) Draw FOV
+local DrawFOVButton = Instance.new("TextButton")
+DrawFOVButton.Size = UDim2.new(0, 260, 0, 30)
+DrawFOVButton.Position = UDim2.new(0, 420, 0, 200)
+DrawFOVButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+DrawFOVButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+DrawFOVButton.Font = Enum.Font.Gotham
+DrawFOVButton.TextSize = 18
+DrawFOVButton.Text = "Draw FOV: ON"
+DrawFOVButton.Parent = AimbotPage
+
+local DrawFOVCorner = Instance.new("UICorner")
+DrawFOVCorner.CornerRadius = UDim.new(0, 8)
+DrawFOVCorner.Parent = DrawFOVButton
+
+local function updateDrawFOVText()
+    DrawFOVButton.Text = "Draw FOV: " .. (AimbotConfig.DrawFOV and "ON" or "OFF")
+    print("[FrostHub DEBUG] DrawFOV:", AimbotConfig.DrawFOV)
+end
+
+DrawFOVButton.MouseButton1Click:Connect(function()
+    AimbotConfig.DrawFOV = not AimbotConfig.DrawFOV
+    playClick()
+    updateDrawFOVText()
+end)
+
+-- 7) Aim Downed
+local DownedButton = Instance.new("TextButton")
+DownedButton.Size = UDim2.new(0, 260, 0, 30)
+DownedButton.Position = UDim2.new(0, 420, 0, 240)
+DownedButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+DownedButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+DownedButton.Font = Enum.Font.Gotham
+DownedButton.TextSize = 18
+DownedButton.Text = "Aim Downed: ON"
+DownedButton.Parent = AimbotPage
+
+local DownedCorner = Instance.new("UICorner")
+DownedCorner.CornerRadius = UDim.new(0, 8)
+DownedCorner.Parent = DownedButton
+
+local function updateDownedText()
+    DownedButton.Text = "Aim Downed: " .. (AimbotConfig.AimDowned and "ON" or "OFF")
+    print("[FrostHub DEBUG] AimDowned:", AimbotConfig.AimDowned)
+end
+
+DownedButton.MouseButton1Click:Connect(function()
+    AimbotConfig.AimDowned = not AimbotConfig.AimDowned
+    playClick()
+    updateDownedText()
+end)
+
+-- 8) Prediction
+local PredButton = Instance.new("TextButton")
+PredButton.Size = UDim2.new(0, 260, 0, 30)
+PredButton.Position = UDim2.new(0, 420, 0, 280)
+PredButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+PredButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+PredButton.Font = Enum.Font.Gotham
+PredButton.TextSize = 18
+PredButton.Text = "Prediction: ON"
+PredButton.Parent = AimbotPage
+
+local PredCorner = Instance.new("UICorner")
+PredCorner.CornerRadius = UDim.new(0, 8)
+PredCorner.Parent = PredButton
+
+local function updatePredText()
+    PredButton.Text = "Prediction: " .. (AimbotConfig.Prediction and "ON" or "OFF")
+    print("[FrostHub DEBUG] Prediction:", AimbotConfig.Prediction)
+end
+
+PredButton.MouseButton1Click:Connect(function()
+    AimbotConfig.Prediction = not AimbotConfig.Prediction
+    playClick()
+    updatePredText()
+end)
+
+-- Prediction slider
+local PredLabel = Instance.new("TextLabel")
+PredLabel.BackgroundTransparency = 1
+PredLabel.Size = UDim2.new(0, 360, 0, 24)
+PredLabel.Position = UDim2.new(0, 0, 0, 300)
+PredLabel.Font = Enum.Font.Gotham
+PredLabel.TextSize = 18
+PredLabel.TextXAlignment = Enum.TextXAlignment.Left
+PredLabel.TextColor3 = Color3.fromRGB(185, 205, 235)
+PredLabel.Text = "Prediction Strength: " .. tostring(AimbotConfig.PredictionStrength)
+PredLabel.Parent = AimbotPage
+
+local PredBack = Instance.new("Frame")
+PredBack.Size = UDim2.new(0, 360, 0, 10)
+PredBack.Position = UDim2.new(0, 0, 0, 330)
+PredBack.BackgroundColor3 = Color3.fromRGB(25, 35, 60)
+PredBack.BorderSizePixel = 0
+PredBack.Parent = AimbotPage
+
+local PredCorner2 = Instance.new("UICorner")
+PredCorner2.CornerRadius = UDim.new(0, 5)
+PredCorner2.Parent = PredBack
+
+local PredFill = Instance.new("Frame")
+PredFill.Size = UDim2.new(0, AimbotConfig.PredictionStrength * 360 * 3, 1, 0)
+PredFill.BackgroundColor3 = Color3.fromRGB(255, 200, 90)
+PredFill.BorderSizePixel = 0
+PredFill.Parent = PredBack
+
+local PredFillCorner = Instance.new("UICorner")
+PredFillCorner.CornerRadius = UDim.new(0, 5)
+PredFillCorner.Parent = PredFill
+
+local draggingPred = false
+
+local function updatePredLabelAndBar()
+    PredLabel.Text = "Prediction Strength: " .. string.format("%.2f", AimbotConfig.PredictionStrength)
+    PredFill.Size = UDim2.new(0, AimbotConfig.PredictionStrength / 0.35 * 360, 1, 0)
+    print("[FrostHub DEBUG] PredictionStrength:", AimbotConfig.PredictionStrength)
+end
+
+PredBack.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingPred = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingPred = false
+    end
+end)
+
+-- 9) Target Part
+local TargetLabel = Instance.new("TextLabel")
+TargetLabel.BackgroundTransparency = 1
+TargetLabel.Size = UDim2.new(0, 340, 0, 26)
+TargetLabel.Position = UDim2.new(0, 0, 0, 370)
+TargetLabel.Font = Enum.Font.Gotham
+TargetLabel.TextSize = 18
+TargetLabel.TextXAlignment = Enum.TextXAlignment.Left
+TargetLabel.TextColor3 = Color3.fromRGB(185, 205, 235)
+TargetLabel.Text = "Target Part: " .. AimbotConfig.TargetPart
+TargetLabel.Parent = AimbotPage
+
+local TargetButton = Instance.new("TextButton")
+TargetButton.Size = UDim2.new(0, 180, 0, 30)
+TargetButton.Position = UDim2.new(0, 360, 0, 370)
+TargetButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+TargetButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+TargetButton.Font = Enum.Font.Gotham
+TargetButton.TextSize = 18
+TargetButton.Text = "Switch"
+TargetButton.Parent = AimbotPage
+
+local TargetCorner2 = Instance.new("UICorner")
+TargetCorner2.CornerRadius = UDim.new(0, 8)
+TargetCorner2.Parent = TargetButton
+
+TargetButton.MouseButton1Click:Connect(function()
+    if AimbotConfig.TargetPart == "Head" then
+        AimbotConfig.TargetPart = "HumanoidRootPart"
+    else
+        AimbotConfig.TargetPart = "Head"
+    end
+    playClick()
+    TargetLabel.Text = "Target Part: " .. AimbotConfig.TargetPart
+    print("[FrostHub DEBUG] TargetPart switched to:", AimbotConfig.TargetPart)
+end)
+
+-- 10) Priority
+local PriorityLabel = Instance.new("TextLabel")
+PriorityLabel.BackgroundTransparency = 1
+PriorityLabel.Size = UDim2.new(0, 340, 0, 26)
+PriorityLabel.Position = UDim2.new(0, 0, 0, 410)
+PriorityLabel.Font = Enum.Font.Gotham
+PriorityLabel.TextSize = 18
+PriorityLabel.TextXAlignment = Enum.TextXAlignment.Left
+PriorityLabel.TextColor3 = Color3.fromRGB(185, 205, 235)
+PriorityLabel.Text = "Priority: Crosshair"
+PriorityLabel.Parent = AimbotPage
+
+local PriorityButton = Instance.new("TextButton")
+PriorityButton.Size = UDim2.new(0, 180, 0, 30)
+PriorityButton.Position = UDim2.new(0, 360, 0, 410)
+PriorityButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+PriorityButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+PriorityButton.Font = Enum.Font.Gotham
+PriorityButton.TextSize = 18
+PriorityButton.Text = "Switch"
+PriorityButton.Parent = AimbotPage
+
+local PriorityCorner = Instance.new("UICorner")
+PriorityCorner.CornerRadius = UDim.new(0, 8)
+PriorityCorner.Parent = PriorityButton
+
+local function updatePriorityLabel()
+    local txt = (AimbotConfig.Priority == "ClosestToCrosshair") and "Crosshair" or "Distance"
+    PriorityLabel.Text = "Priority: " .. txt
+    print("[FrostHub DEBUG] Priority:", AimbotConfig.Priority)
+end
+
+PriorityButton.MouseButton1Click:Connect(function()
+    if AimbotConfig.Priority == "ClosestToCrosshair" then
+        AimbotConfig.Priority = "ClosestDistance"
+    else
+        AimbotConfig.Priority = "ClosestToCrosshair"
+    end
+    playClick()
+    updatePriorityLabel()
+end)
+
+-- 11) Bind key changer
+local KeyHint = Instance.new("TextLabel")
+KeyHint.BackgroundTransparency = 1
+KeyHint.Size = UDim2.new(0, 400, 0, 26)
+KeyHint.Position = UDim2.new(0, 0, 0, 450)
+KeyHint.Font = Enum.Font.Gotham
+KeyHint.TextSize = 18
+KeyHint.TextXAlignment = Enum.TextXAlignment.Left
+KeyHint.TextColor3 = Color3.fromRGB(185, 205, 235)
+KeyHint.Text = "Hold " .. AimbotConfig.BindKey.Name .. " to aim"
+KeyHint.Parent = AimbotPage
+
+local ChangeKeyButton = Instance.new("TextButton")
+ChangeKeyButton.Size = UDim2.new(0, 220, 0, 30)
+ChangeKeyButton.Position = UDim2.new(0, 360, 0, 450)
+ChangeKeyButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+ChangeKeyButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+ChangeKeyButton.Font = Enum.Font.Gotham
+ChangeKeyButton.TextSize = 18
+ChangeKeyButton.Text = "Change Bind"
+ChangeKeyButton.Parent = AimbotPage
+
+local ChangeKeyCorner = Instance.new("UICorner")
+ChangeKeyCorner.CornerRadius = UDim.new(0, 8)
+ChangeKeyCorner.Parent = ChangeKeyButton
+
+local waitingForKey = false
+
+ChangeKeyButton.MouseButton1Click:Connect(function()
+    if waitingForKey then return end
+    waitingForKey = true
+    playClick()
+    ChangeKeyButton.Text = "Press any key"
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if waitingForKey and input.UserInputType == Enum.UserInputType.Keyboard then
+        waitingForKey = false
+        AimbotConfig.BindKey = input.KeyCode
+        KeyHint.Text = "Hold " .. AimbotConfig.BindKey.Name .. " to aim"
+        ChangeKeyButton.Text = "Change Bind"
+        print("[FrostHub DEBUG] BindKey changed to:", AimbotConfig.BindKey.Name)
+    end
+end)
+
+AimbotTabButton.MouseButton1Click:Connect(function()
+    print("[FrostHub DEBUG] Aimbot tab clicked")
+    playClick()
+    showPage("Aimbot")
+end)
+
+------------------------------------------------------
+-- ESP TAB (unchanged logic, scaled UI)
+------------------------------------------------------
+local ESPTabButton = createTabButton("ESP")
+local ESPPage = createPage("ESP")
+
+local ESPTitle = Instance.new("TextLabel")
+ESPTitle.BackgroundTransparency = 1
+ESPTitle.Size = UDim2.new(1, 0, 0, 32)
+ESPTitle.Font = Enum.Font.GothamBold
+ESPTitle.TextSize = 26
+ESPTitle.TextXAlignment = Enum.TextXAlignment.Left
+ESPTitle.Text = "ESP Settings"
+ESPTitle.TextColor3 = Color3.fromRGB(220, 235, 255)
+ESPTitle.Parent = ESPPage
+
+local ESPInfo = Instance.new("TextLabel")
+ESPInfo.BackgroundTransparency = 1
+ESPInfo.Size = UDim2.new(1, 0, 0, 80)
+ESPInfo.Position = UDim2.new(0, 0, 0, 40)
+ESPInfo.Font = Enum.Font.Gotham
+ESPInfo.TextSize = 18
+ESPInfo.TextWrapped = true
+ESPInfo.TextXAlignment = Enum.TextXAlignment.Left
+ESPInfo.TextYAlignment = Enum.TextYAlignment.Top
+ESPInfo.TextColor3 = Color3.fromRGB(185, 205, 235)
+ESPInfo.Text = "Basic ESP that draws boxes and names on players. Works best in exploit environments that support the Drawing API."
+ESPInfo.Parent = ESPPage
+
+local ESPConfig = {
+    Enabled = false,
+    TeamCheck = false,
+    ShowNames = true,
+    ShowBoxes = true,
+}
+
+local ESPToggle = Instance.new("TextButton")
+ESPToggle.Size = UDim2.new(0, 260, 0, 44)
+ESPToggle.Position = UDim2.new(0, 0, 0, 140)
+ESPToggle.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+ESPToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+ESPToggle.Font = Enum.Font.Gotham
+ESPToggle.TextSize = 20
+ESPToggle.Text = "ESP: OFF"
+ESPToggle.Parent = ESPPage
+
+local ESPToggleCorner = Instance.new("UICorner")
+ESPToggleCorner.CornerRadius = UDim.new(0, 10)
+ESPToggleCorner.Parent = ESPToggle
+
+local function updateESPToggle()
+    ESPToggle.Text = ESPConfig.Enabled and "ESP: ON" or "ESP: OFF"
+    ESPToggle.BackgroundColor3 = ESPConfig.Enabled and Color3.fromRGB(40, 120, 60) or Color3.fromRGB(120, 40, 40)
+    print("[FrostHub DEBUG] ESP Enabled:", ESPConfig.Enabled)
+end
+
+ESPToggle.MouseButton1Click:Connect(function()
+    ESPConfig.Enabled = not ESPConfig.Enabled
+    playClick()
+    updateESPToggle()
+end)
+
+local ESPTeamButton = Instance.new("TextButton")
+ESPTeamButton.Size = UDim2.new(0, 260, 0, 30)
+ESPTeamButton.Position = UDim2.new(0, 0, 0, 200)
+ESPTeamButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+ESPTeamButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+ESPTeamButton.Font = Enum.Font.Gotham
+ESPTeamButton.TextSize = 18
+ESPTeamButton.Text = "ESP TeamCheck: OFF"
+ESPTeamButton.Parent = ESPPage
+
+local ESPTeamCorner = Instance.new("UICorner")
+ESPTeamCorner.CornerRadius = UDim.new(0, 8)
+ESPTeamCorner.Parent = ESPTeamButton
+
+local function updateESPTeamText()
+    ESPTeamButton.Text = "ESP TeamCheck: " .. (ESPConfig.TeamCheck and "ON" or "OFF")
+end
+
+ESPTeamButton.MouseButton1Click:Connect(function()
+    ESPConfig.TeamCheck = not ESPConfig.TeamCheck
+    playClick()
+    updateESPTeamText()
+end)
+
+local ESPNameButton = Instance.new("TextButton")
+ESPNameButton.Size = UDim2.new(0, 260, 0, 30)
+ESPNameButton.Position = UDim2.new(0, 0, 0, 240)
+ESPNameButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+ESPNameButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+ESPNameButton.Font = Enum.Font.Gotham
+ESPNameButton.TextSize = 18
+ESPNameButton.Text = "Show Names: ON"
+ESPNameButton.Parent = ESPPage
+
+local ESPNameCorner = Instance.new("UICorner")
+ESPNameCorner.CornerRadius = UDim.new(0, 8)
+ESPNameCorner.Parent = ESPNameButton
+
+local function updateESPNameText()
+    ESPNameButton.Text = "Show Names: " .. (ESPConfig.ShowNames and "ON" or "OFF")
+end
+
+ESPNameButton.MouseButton1Click:Connect(function()
+    ESPConfig.ShowNames = not ESPConfig.ShowNames
+    playClick()
+    updateESPNameText()
+end)
+
+local ESPBoxButton = Instance.new("TextButton")
+ESPBoxButton.Size = UDim2.new(0, 260, 0, 30)
+ESPBoxButton.Position = UDim2.new(0, 0, 0, 280)
+ESPBoxButton.BackgroundColor3 = Color3.fromRGB(30, 40, 65)
+ESPBoxButton.TextColor3 = Color3.fromRGB(220, 235, 255)
+ESPBoxButton.Font = Enum.Font.Gotham
+ESPBoxButton.TextSize = 18
+ESPBoxButton.Text = "Show Boxes: ON"
+ESPBoxButton.Parent = ESPPage
+
+local ESPBoxCorner = Instance.new("UICorner")
+ESPBoxCorner.CornerRadius = UDim.new(0, 8)
+ESPBoxCorner.Parent = ESPBoxButton
+
+local function updateESPBoxText()
+    ESPBoxButton.Text = "Show Boxes: " .. (ESPConfig.ShowBoxes and "ON" or "OFF")
+end
+
+ESPBoxButton.MouseButton1Click:Connect(function()
+    ESPConfig.ShowBoxes = not ESPConfig.ShowBoxes
+    playClick()
+    updateESPBoxText()
+end)
+
+ESPTabButton.MouseButton1Click:Connect(function()
+    print("[FrostHub DEBUG] ESP tab clicked")
+    playClick()
+    showPage("ESP")
+end)
+
+------------------------------------------------------
+-- Aimbot Logic (rewritten for smoother behaviour)
+------------------------------------------------------
+local holdingKey = false
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == AimbotConfig.BindKey and not waitingForKey then
+        holdingKey = true
+        print("[FrostHub DEBUG] Bind key DOWN (", AimbotConfig.BindKey.Name, ")")
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == AimbotConfig.BindKey then
+        holdingKey = false
+        print("[FrostHub DEBUG] Bind key UP (", AimbotConfig.BindKey.Name, ")")
+    end
+end)
+
+-- FOV circle (Drawing API)
+local circle
+pcall(function()
+    circle = Drawing and Drawing.new("Circle") or nil
+end)
+
+if circle then
+    circle.Color = Color3.fromRGB(120, 180, 255)
+    circle.Thickness = 2
+    circle.Filled = false
+    circle.Transparency = 0.8
+end
+
+local function isVisible(part)
+    if not AimbotConfig.VisibleCheck then return true end
+    local camera = Workspace.CurrentCamera
+    if not camera then return false end
+
+    local origin = camera.CFrame.Position
+    local direction = (part.Position - origin)
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = {LocalPlayer.Character}
+
+    local result = Workspace:Raycast(origin, direction, params)
+    if result and result.Instance and not result.Instance:IsDescendantOf(part.Parent) then
+        return false
+    end
+    return true
+end
+
+local function isAlive(plr)
+    if not plr.Character then return false end
+    local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+    return hum.Health > 0
+end
+
+local function getTargetPart(plr)
+    local char = plr.Character
+    if not char then return nil end
+    return char:FindFirstChild(AimbotConfig.TargetPart) or char:FindFirstChild("Head")
+end
+
+local function getClosestPlayerToMouse()
+    local camera = Workspace.CurrentCamera
+    if not camera then
+        return nil
+    end
+
+    local closestPlayer
+    local closestMetric = math.huge
+
+    local mouseLoc = UserInputService:GetMouseLocation()
+    local mousePos = Vector2.new(mouseLoc.X, mouseLoc.Y)
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and isAlive(plr) then
+            if AimbotConfig.TeamCheck and LocalPlayer.Team and plr.Team and plr.Team == LocalPlayer.Team then
+                -- skip same team
+            else
+                local part = getTargetPart(plr)
+                if part and isVisible(part) then
+                    local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
+                    if onScreen and screenPos.Z > 0 then
+                        local target2D = Vector2.new(screenPos.X, screenPos.Y)
+                        local crosshairDist = (mousePos - target2D).Magnitude
+
+                        if crosshairDist <= AimbotConfig.FOVRadius then
+                            local metric
+                            if AimbotConfig.Priority == "ClosestToCrosshair" then
+                                metric = crosshairDist
+                            else
+                                metric = (camera.CFrame.Position - part.Position).Magnitude
+                            end
+
+                            if metric < closestMetric then
+                                closestMetric = metric
+                                closestPlayer = plr
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+------------------------------------------------------
+-- ESP Logic (same behaviour, bigger GUI)
+------------------------------------------------------
+local ESPObjects = {}
+
+local function createESPForPlayer(plr)
+    if plr == LocalPlayer then return end
+
+    ESPObjects[plr] = ESPObjects[plr] or {}
+    local data = ESPObjects[plr]
+
+    if Drawing then
+        if not data.Box then
+            local box = Drawing.new("Square")
+            box.Color = Color3.fromRGB(0, 170, 255)
+            box.Thickness = 1.5
+            box.Filled = false
+            box.Visible = false
+            data.Box = box
+        end
+
+        if not data.Name then
+            local name = Drawing.new("Text")
+            name.Color = Color3.fromRGB(255, 255, 255)
+            name.Size = 16
+            name.Outline = true
+            name.Center = true
+            name.Visible = false
+            data.Name = name
+        end
+    end
+end
+
+local function removeESPForPlayer(plr)
+    local data = ESPObjects[plr]
+    if not data then return end
+
+    if data.Box then pcall(function() data.Box:Remove() end) end
+    if data.Name then pcall(function() data.Name:Remove() end) end
+    ESPObjects[plr] = nil
+end
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    createESPForPlayer(plr)
+end
+
+Players.PlayerAdded:Connect(createESPForPlayer)
+Players.PlayerRemoving:Connect(removeESPForPlayer)
+
+------------------------------------------------------
+-- Main RenderStepped Loop (Aimbot + FOV + ESP + sliders)
+------------------------------------------------------
+local lastFrameTime = tick()
+
+RunService.RenderStepped:Connect(function()
+    local now = tick()
+    local dt = now - lastFrameTime
+    lastFrameTime = now
+
+    local camera = Workspace.CurrentCamera
+    if not camera then return end
+
+    -- Update sliders while dragging
+    if draggingFOV then
+        local mousePos = UserInputService:GetMouseLocation().X
+        local absPos = FOVSliderBack.AbsolutePosition.X
+        local absSize = FOVSliderBack.AbsoluteSize.X
+        local ratio = math.clamp((mousePos - absPos) / absSize, 0, 1)
+        AimbotConfig.FOVRadius = math.clamp(math.floor(ratio * 900), 40, 900)
+        updateFOVLabelAndBar()
+    end
+
+    if draggingSmooth then
+        local mousePos = UserInputService:GetMouseLocation().X
+        local absPos = SmoothBack.AbsolutePosition.X
+        local absSize = SmoothBack.AbsoluteSize.X
+        local ratio = math.clamp((mousePos - absPos) / absSize, 0.02, 1)
+        AimbotConfig.Smoothing = ratio
+        updateSmoothLabelAndBar()
+    end
+
+    if draggingPred then
+        local mousePos = UserInputService:GetMouseLocation().X
+        local absPos = PredBack.AbsolutePosition.X
+        local absSize = PredBack.AbsoluteSize.X
+        local ratio = math.clamp((mousePos - absPos) / absSize, 0, 1)
+        AimbotConfig.PredictionStrength = math.clamp(ratio * 0.35, 0.01, 0.35)
+        updatePredLabelAndBar()
+    end
+
+    -- Draw FOV circle
+    if circle then
+        circle.Visible = AimbotConfig.Enabled and AimbotConfig.DrawFOV
+        if circle.Visible then
+            local mouseLoc = UserInputService:GetMouseLocation()
+            circle.Position = mouseLoc
+            circle.Radius = AimbotConfig.FOVRadius
+        end
+    end
+
+    -- Aimbot aiming
+    if AimbotConfig.Enabled and holdingKey then
+        local targetPlayer = getClosestPlayerToMouse()
+        if targetPlayer and targetPlayer.Character then
+            local part = getTargetPart(targetPlayer)
+            if part then
+                local targetPos = part.Position
+
+                -- Simple velocity-based prediction
+                if AimbotConfig.Prediction then
+                    local root = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        local vel = root.Velocity
+                        targetPos = targetPos + (vel * AimbotConfig.PredictionStrength)
+                    end
+                end
+
+                local camCF = camera.CFrame
+                local toTarget = (targetPos - camCF.Position)
+                if toTarget.Magnitude > 1 then
+                    local desiredCF = CFrame.new(camCF.Position, camCF.Position + toTarget)
+
+                    -- Convert smoothing (0.02–1) to rotation speed
+                    local speed = math.clamp(AimbotConfig.Smoothing, 0.02, 1)
+                    local alpha = math.clamp(speed * dt * 60, 0, 1) -- frame-rate independent
+
+                    -- Tiny deadzone to reduce jitter when already on target
+                    local angleDiff = (camCF.LookVector:Dot(toTarget.Unit))
+                    if angleDiff < 0.999 then
+                        camera.CFrame = camCF:Lerp(desiredCF, alpha)
+                    end
+                end
+            end
+        end
+    end
+
+    -- ESP update
+    if Drawing and ESPConfig.Enabled then
+        for plr, data in pairs(ESPObjects) do
+            local char = plr.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+            if not (char and hum and hrp and hum.Health > 0) then
+                if data.Box then data.Box.Visible = false end
+                if data.Name then data.Name.Visible = false end
+                continue
+            end
+
+            if ESPConfig.TeamCheck and LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
+                if data.Box then data.Box.Visible = false end
+                if data.Name then data.Name.Visible = false end
+                continue
+            end
+
+            local rootPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+            if not onScreen or rootPos.Z < 0 then
+                if data.Box then data.Box.Visible = false end
+                if data.Name then data.Name.Visible = false end
+                continue
+            end
+
+            local head = char:FindFirstChild("Head")
+            local leg = char:FindFirstChild("Left Leg") or char:FindFirstChild("LeftLowerLeg") or char:FindFirstChild("LeftFoot")
+
+            local topPos = head and camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0)) or rootPos
+            local bottomPos = leg and camera:WorldToViewportPoint(leg.Position - Vector3.new(0, 0.5, 0)) or camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
+
+            local height = math.abs(topPos.Y - bottomPos.Y)
+            local width = height / 2
+
+            if data.Box and ESPConfig.ShowBoxes then
+                data.Box.Size = Vector2.new(width, height)
+                data.Box.Position = Vector2.new(rootPos.X - width / 2, topPos.Y)
+                data.Box.Visible = true
+            elseif data.Box then
+                data.Box.Visible = false
+            end
+
+            if data.Name and ESPConfig.ShowNames then
+                data.Name.Text = plr.Name
+                data.Name.Position = Vector2.new(rootPos.X, topPos.Y - 18)
+                data.Name.Visible = true
+            elseif data.Name then
+                data.Name.Visible = false
+            end
+        end
+    elseif Drawing then
+        -- hide ESP when disabled
+        for _, data in pairs(ESPObjects) do
+            if data.Box then data.Box.Visible = false end
+            if data.Name then data.Name.Visible = false end
+        end
+    end
+end)
+
+------------------------------------------------------
+-- Initial Setup
+------------------------------------------------------
+showPage("Main")
+updateToggle()
+updateFOVLabelAndBar()
+updateSmoothLabelAndBar()
+updateTeamCheckText()
+updateVisText()
+updateDrawFOVText()
+updateDownedText()
+updatePredText()
+updatePredLabelAndBar()
+updatePriorityLabel()
+updateESPToggle()
+updateESPTeamText()
+updateESPNameText()
+updateESPBoxText()
+
+pcall(function()
+    StarterGui:SetCore("SendNotification", {
+        Title = "Frost Hub (DEBUG)",
+        Text = "Loaded Aimbot + ESP (hold " .. AimbotConfig.BindKey.Name .. ")",
+        Duration = 5
+    })
+end)
+
+print("[FrostHub DEBUG] Initialization complete.")
