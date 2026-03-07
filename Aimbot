@@ -33,19 +33,19 @@ local function playClick()
 end
 
 ------------------------------------------------------
--- AIMBOT / ESP / NOCLIP CONFIG
+-- AIMBOT / ESP / NOCLIP / FLIGHT CONFIG
 ------------------------------------------------------
 local AimbotConfig = {
     Enabled = false,
-    FOVRadius = 140,        -- default FOV
-    Smoothing = 0.6,        -- base smooth (we also scale with Accuracy)
-    TargetPart = "Head",    -- Head or HumanoidRootPart
+    FOVRadius = 140,
+    Smoothing = 0.6,
+    TargetPart = "Head",
     BindKey = Enum.KeyCode.E,
-    HoldToAim = true,       -- true = hold, false = toggle
+    HoldToAim = true,
     DynamicFOV = true,
     MaxDistance = 800,
-    VisibleCheck = true,    -- line-of-sight
-    Accuracy = 100,         -- 0–100%: how hard it locks onto target
+    VisibleCheck = true,
+    Accuracy = 100,
 }
 
 local holdingKey = false
@@ -70,6 +70,17 @@ local NoclipConfig = {
     Enabled = false,
 }
 
+-- NEW: Flight config
+local FlightConfig = {
+    Enabled = false,
+    Speed = 60,              -- studs per second
+    ToggleKey = Enum.KeyCode.F,
+}
+
+local flightBodyVel
+local flightBodyGyro
+local flightMoving = false
+
 ------------------------------------------------------
 -- RAYFIELD WINDOW SETUP
 ------------------------------------------------------
@@ -92,7 +103,7 @@ local MainTab = Window:CreateTab("Main", 4483362458)
 MainTab:CreateSection("Welcome")
 MainTab:CreateParagraph({
     Title = "Frost Hub",
-    Content = "Legit-style aimbot, ESP, and noclip. Aimbot tab = aim assist, ESP tab = visuals, Noclip tab = wall-walk. Accuracy slider lets you choose how strong the lock-on feels.",
+    Content = "Legit-style aimbot, ESP, noclip, and flight. Aimbot tab = aim assist, ESP tab = visuals, Noclip tab = wall-walk, Flight tab = free-move in the air.",
 })
 
 ------------------------------------------------------
@@ -140,7 +151,6 @@ AimbotTab:CreateDropdown({
     CurrentOption = AimbotConfig.TargetPart,
     Flag = "Frost_TargetPart",
     Callback = function(Option)
-        -- normalize: make sure we only accept valid strings
         if Option == "Head" or Option == "HumanoidRootPart" then
             AimbotConfig.TargetPart = Option
         else
@@ -247,7 +257,7 @@ AimbotTab:CreateButton({
     end,
 })
 
--- Bind handling
+-- Bind handling (Aimbot key)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if waitingForKey and input.UserInputType == Enum.UserInputType.Keyboard then
         waitingForKey = false
@@ -357,6 +367,153 @@ NoclipTab:CreateToggle({
 })
 
 ------------------------------------------------------
+-- FLIGHT TAB (NEW)
+------------------------------------------------------
+local FlightTab = Window:CreateTab("Flight", 4483362458)
+FlightTab:CreateSection("Flight Settings")
+
+FlightTab:CreateParagraph({
+    Title = "Info",
+    Content = "Simple WASD / Space / Ctrl flight that follows your camera direction. Toggleable with a key.",
+})
+
+FlightTab:CreateToggle({
+    Name = "Flight Enabled",
+    CurrentValue = FlightConfig.Enabled,
+    Flag = "Frost_FlightEnabled",
+    Callback = function(Value)
+        FlightConfig.Enabled = Value
+        playClick()
+        print("[FrostHub DEBUG] Flight Enabled:", FlightConfig.Enabled)
+
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+
+        if Value and char and root then
+            -- Create / reuse BodyVelocity + BodyGyro
+            if not flightBodyVel then
+                flightBodyVel = Instance.new("BodyVelocity")
+                flightBodyVel.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+                flightBodyVel.Velocity = Vector3.new(0, 0, 0)
+                flightBodyVel.P = 1e4
+                flightBodyVel.Parent = root
+            else
+                flightBodyVel.Parent = root
+            end
+
+            if not flightBodyGyro then
+                flightBodyGyro = Instance.new("BodyGyro")
+                flightBodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+                flightBodyGyro.P = 1e4
+                flightBodyGyro.CFrame = root.CFrame
+                flightBodyGyro.Parent = root
+            else
+                flightBodyGyro.Parent = root
+            end
+        else
+            -- Disable flight forces
+            if flightBodyVel then flightBodyVel.Parent = nil end
+            if flightBodyGyro then flightBodyGyro.Parent = nil end
+        end
+    end,
+})
+
+FlightTab:CreateSlider({
+    Name = "Flight Speed",
+    Range = {10, 200},
+    Increment = 5,
+    CurrentValue = FlightConfig.Speed,
+    Flag = "Frost_FlightSpeed",
+    Callback = function(Value)
+        FlightConfig.Speed = Value
+        playClick()
+        print("[FrostHub DEBUG] Flight Speed:", FlightConfig.Speed)
+    end,
+})
+
+FlightTab:CreateParagraph({
+    Title = "Flight Controls",
+    Content = "Toggle flight key: " .. FlightConfig.ToggleKey.Name .. "\nW/S = forward/back, A/D = strafe, Space = up, LeftControl = down.",
+})
+
+-- Track movement input for flight
+local moveDirection = Vector3.new(0, 0, 0)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        -- Toggle flight key
+        if input.KeyCode == FlightConfig.ToggleKey then
+            FlightConfig.Enabled = not FlightConfig.Enabled
+            playClick()
+            print("[FrostHub DEBUG] Flight toggled via key:", FlightConfig.Enabled)
+
+            local char = LocalPlayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+
+            if FlightConfig.Enabled and char and root then
+                if not flightBodyVel then
+                    flightBodyVel = Instance.new("BodyVelocity")
+                    flightBodyVel.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+                    flightBodyVel.Velocity = Vector3.new(0, 0, 0)
+                    flightBodyVel.P = 1e4
+                    flightBodyVel.Parent = root
+                else
+                    flightBodyVel.Parent = root
+                end
+
+                if not flightBodyGyro then
+                    flightBodyGyro = Instance.new("BodyGyro")
+                    flightBodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+                    flightBodyGyro.P = 1e4
+                    flightBodyGyro.CFrame = root.CFrame
+                    flightBodyGyro.Parent = root
+                else
+                    flightBodyGyro.Parent = root
+                end
+            else
+                if flightBodyVel then flightBodyVel.Parent = nil end
+                if flightBodyGyro then flightBodyGyro.Parent = nil end
+            end
+        end
+
+        -- Movement keys
+        if input.KeyCode == Enum.KeyCode.W then
+            moveDirection = moveDirection + Vector3.new(0, 0, -1)
+        elseif input.KeyCode == Enum.KeyCode.S then
+            moveDirection = moveDirection + Vector3.new(0, 0, 1)
+        elseif input.KeyCode == Enum.KeyCode.A then
+            moveDirection = moveDirection + Vector3.new(-1, 0, 0)
+        elseif input.KeyCode == Enum.KeyCode.D then
+            moveDirection = moveDirection + Vector3.new(1, 0, 0)
+        elseif input.KeyCode == Enum.KeyCode.Space then
+            moveDirection = moveDirection + Vector3.new(0, 1, 0)
+        elseif input.KeyCode == Enum.KeyCode.LeftControl then
+            moveDirection = moveDirection + Vector3.new(0, -1, 0)
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        if input.KeyCode == Enum.KeyCode.W then
+            moveDirection = moveDirection - Vector3.new(0, 0, -1)
+        elseif input.KeyCode == Enum.KeyCode.S then
+            moveDirection = moveDirection - Vector3.new(0, 0, 1)
+        elseif input.KeyCode == Enum.KeyCode.A then
+            moveDirection = moveDirection - Vector3.new(-1, 0, 0)
+        elseif input.KeyCode == Enum.KeyCode.D then
+            moveDirection = moveDirection - Vector3.new(1, 0, 0)
+        elseif input.KeyCode == Enum.KeyCode.Space then
+            moveDirection = moveDirection - Vector3.new(0, 1, 0)
+        elseif input.KeyCode == Enum.KeyCode.LeftControl then
+            moveDirection = moveDirection - Vector3.new(0, -1, 0)
+        end
+    end
+end)
+
+------------------------------------------------------
 -- AIMBOT / ESP CORE LOGIC
 ------------------------------------------------------
 local function isAlive(plr)
@@ -370,13 +527,11 @@ local function getTargetPart(plr)
     local char = plr.Character
     if not char then return nil end
 
-    -- Always try selected target part first (Head or HumanoidRootPart)
     local target = char:FindFirstChild(AimbotConfig.TargetPart)
     if target and target:IsA("BasePart") then
         return target
     end
 
-    -- Fallbacks: HRP then Head
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if hrp and hrp:IsA("BasePart") then
         return hrp
@@ -410,7 +565,6 @@ local function isVisible(fromPos, targetPart, ignoreList)
     return result.Instance:IsDescendantOf(targetPart.Parent)
 end
 
--- Get mouse/crosshair position (FPS & third-person friendly)
 local function getMouseVector2()
     if Mouse and Mouse.Hit and Camera then
         local hitPos = Mouse.Hit.p
@@ -432,7 +586,6 @@ local function getMouseVector2()
     return Vector2.new(0, 0)
 end
 
--- Target selection (universal & precise, with stronger lock bias)
 local function getBestTarget()
     if not Camera then Camera = Workspace.CurrentCamera end
     local camera = Camera
@@ -464,7 +617,6 @@ local function getBestTarget()
 
                         if crosshairDist <= effectiveFOV then
                             if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
-                                -- Stronger bias towards being closest to crosshair
                                 local score = crosshairDist^1.2 + (dist3D * 0.015)
                                 if score < bestScore then
                                     bestScore = score
@@ -531,7 +683,7 @@ Players.PlayerAdded:Connect(createESPForPlayer)
 Players.PlayerRemoving:Connect(removeESPForPlayer)
 
 ------------------------------------------------------
--- NOCLIP SUPPORT (more aggressive + extra anti-bump)
+-- NOCLIP SUPPORT
 ------------------------------------------------------
 local CharacterParts = {}
 
@@ -565,7 +717,7 @@ end
 LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
 
 ------------------------------------------------------
--- MAIN RENDERSTEPPED LOOP
+-- MAIN RENDERSTEPPED LOOP (Aimbot, Noclip, ESP, Flight)
 ------------------------------------------------------
 local lastFrameTime = tick()
 
@@ -578,7 +730,7 @@ RunService.RenderStepped:Connect(function()
     local camera = Camera
     if not camera then return end
 
-    -- decide if we should aim this frame
+    -- Aimbot key state
     local shouldAim
     if AimbotConfig.HoldToAim then
         shouldAim = holdingKey
@@ -587,7 +739,7 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- Aimbot aiming (uses Accuracy for stronger/weaker lock)
+    -- Aimbot aiming
     --------------------------------------------------
     if AimbotConfig.Enabled and shouldAim then
         local targetPlayer = getBestTarget()
@@ -602,16 +754,11 @@ RunService.RenderStepped:Connect(function()
                 if toTarget.Magnitude > 1 then
                     local desiredCF = CFrame.new(camPos, camPos + toTarget)
 
-                    -- Accuracy 0–100 -> blend factor
-                    -- Higher Accuracy => stronger / snappier lock
                     local accFactor = math.clamp(AimbotConfig.Accuracy / 100, 0, 1)
-
-                    -- Scale effective smoothing by accuracy (more accuracy = faster turn)
                     local baseSpeed = math.clamp(AimbotConfig.Smoothing, 0.02, 1)
                     local speed = baseSpeed + accFactor * 2
                     local alpha = math.clamp(speed * dt * 50, 0, 1)
 
-                    -- If Accuracy is 0, this still moves slowly; if 100, it’s very sticky
                     local angleDot = camCF.LookVector:Dot(toTarget.Unit)
                     if angleDot < 0.9999 then
                         camera.CFrame = camCF:Lerp(desiredCF, alpha)
@@ -622,7 +769,7 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- Noclip logic (aggressively re-applies each frame)
+    -- Noclip logic
     --------------------------------------------------
     if NoclipConfig.Enabled and LocalPlayer.Character then
         local char = LocalPlayer.Character
@@ -631,26 +778,81 @@ RunService.RenderStepped:Connect(function()
             rebuildCharacterPartList(char)
         end
 
-        -- Turn off collisions
         for _, part in ipairs(CharacterParts) do
             if part and part:IsA("BasePart") then
                 part.CanCollide = false
             end
         end
 
-        -- Extra help: try to prevent physics from forcing you back
         local hum = char:FindFirstChildOfClass("Humanoid")
         if hum then
-            -- Disable common states that cause bumping
             hum:ChangeState(Enum.HumanoidStateType.Physics)
             hum.PlatformStand = false
         end
 
-        -- If sitting in a seat, break weld
         local seat = char:FindFirstChildWhichIsA("Seat", true)
         if seat and seat.Occupant then
             seat.Occupant = nil
         end
+    end
+
+    --------------------------------------------------
+    -- Flight logic (NEW)
+    --------------------------------------------------
+    if FlightConfig.Enabled and LocalPlayer.Character then
+        local char = LocalPlayer.Character
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+            hum.PlatformStand = false
+        end
+
+        if root then
+            if not flightBodyVel or flightBodyVel.Parent ~= root then
+                if not flightBodyVel then
+                    flightBodyVel = Instance.new("BodyVelocity")
+                    flightBodyVel.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+                    flightBodyVel.P = 1e4
+                end
+                flightBodyVel.Velocity = Vector3.new(0, 0, 0)
+                flightBodyVel.Parent = root
+            end
+
+            if not flightBodyGyro or flightBodyGyro.Parent ~= root then
+                if not flightBodyGyro then
+                    flightBodyGyro = Instance.new("BodyGyro")
+                    flightBodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+                    flightBodyGyro.P = 1e4
+                end
+                flightBodyGyro.CFrame = Camera.CFrame
+                flightBodyGyro.Parent = root
+            else
+                flightBodyGyro.CFrame = Camera.CFrame
+            end
+
+            local dir = moveDirection
+            if dir.Magnitude > 0 then
+                dir = dir.Unit
+                local camCF = Camera.CFrame
+                local forward = camCF.LookVector * dir.Z
+                local right = camCF.RightVector * dir.X
+                local up = Vector3.new(0, dir.Y, 0)
+
+                local finalDir = forward + right + up
+                if finalDir.Magnitude > 0 then
+                    finalDir = finalDir.Unit
+                end
+
+                flightBodyVel.Velocity = finalDir * FlightConfig.Speed
+            else
+                flightBodyVel.Velocity = Vector3.new(0, 0, 0)
+            end
+        end
+    else
+        if flightBodyVel then flightBodyVel.Parent = nil end
+        if flightBodyGyro then flightBodyGyro.Parent = nil end
     end
 
     --------------------------------------------------
@@ -720,9 +922,9 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "Frost Hub (DEBUG)",
-        Text = "Loaded Aimbot + ESP + Noclip (aim bind: " .. AimbotConfig.BindKey.Name .. ")",
+        Text = "Loaded Aimbot + ESP + Noclip + Flight (aim bind: " .. AimbotConfig.BindKey.Name .. ", fly key: " .. FlightConfig.ToggleKey.Name .. ")",
         Duration = 5,
     })
 end)
 
-print("[FrostHub DEBUG] Initialization complete (Rayfield UI with stronger Aimbot, ESP, Noclip).")
+print("[FrostHub DEBUG] Initialization complete (Rayfield UI with Aimbot, ESP, Noclip, Flight).")
