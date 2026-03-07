@@ -9,9 +9,11 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
-local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse() -- helps with more games
+
 print("[FrostHub DEBUG] LocalPlayer:", LocalPlayer and LocalPlayer.Name or "nil")
 
 ------------------------------------------------------
@@ -35,14 +37,14 @@ end
 ------------------------------------------------------
 local AimbotConfig = {
     Enabled = false,
-    FOVRadius = 140,      -- tighter default FOV for more precision (was 220)
+    FOVRadius = 140,      -- tighter default FOV for precision
     Smoothing = 0.55,     -- slightly faster by default
     TargetPart = "Head",
     BindKey = Enum.KeyCode.E,
     HoldToAim = true,     -- true = hold, false = toggle
     DynamicFOV = true,
     MaxDistance = 800,
-    VisibleCheck = true,  -- NEW: only target visible players (line-of-sight)
+    VisibleCheck = true,  -- only target visible players (line-of-sight)
 }
 
 local holdingKey = false          -- HOLD mode state
@@ -73,7 +75,7 @@ local Window = Rayfield:CreateWindow({
     Name = "WINTER HUB | v1.0",
     LoadingTitle = "Frost Hub",
     LoadingSubtitle = "v1.3 DEBUG",
-    KeySystem = false, -- set to true if you want Rayfield's key system instead of your own
+    KeySystem = false,
     ConfigurationSaving = {
         Enabled = false,
         FolderName = nil,
@@ -124,13 +126,10 @@ AimbotTab:CreateToggle({
         AimbotConfig.HoldToAim = Value
         playClick()
 
-        -- reset states when switching mode
         holdingKey = false
         toggleAimingActive = false
 
         print("[FrostHub DEBUG] Aimbot HoldToAim:", AimbotConfig.HoldToAim)
-        -- Rayfield can't dynamically rename this toggle from inside itself,
-        -- but log still reflects the mode.
     end,
 })
 
@@ -163,7 +162,7 @@ AimbotTab:CreateSlider({
 -- 5) Smoothing slider (0.02–1)
 AimbotTab:CreateSlider({
     Name = "Smoothing (speed)",
-    Range = {2, 100}, -- we will map 2–100 to 0.02–1 internally
+    Range = {2, 100},
     Increment = 1,
     CurrentValue = math.floor(AimbotConfig.Smoothing * 100),
     Flag = "Frost_Smoothing",
@@ -231,7 +230,6 @@ AimbotTab:CreateButton({
 
 -- Listen for key input for bind change + aimbot hold/toggle
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    -- handle changing bind key first
     if waitingForKey and input.UserInputType == Enum.UserInputType.Keyboard then
         waitingForKey = false
         AimbotConfig.BindKey = input.KeyCode
@@ -273,7 +271,6 @@ ESPTab:CreateParagraph({
     Content = "Basic ESP that draws boxes and names on players. Works best in exploit environments that support the Drawing API.",
 })
 
--- ESP master toggle
 ESPTab:CreateToggle({
     Name = "ESP Enabled",
     CurrentValue = ESPConfig.Enabled,
@@ -285,7 +282,6 @@ ESPTab:CreateToggle({
     end,
 })
 
--- Team check toggle
 ESPTab:CreateToggle({
     Name = "Team Check",
     CurrentValue = ESPConfig.TeamCheck,
@@ -297,7 +293,6 @@ ESPTab:CreateToggle({
     end,
 })
 
--- Show names
 ESPTab:CreateToggle({
     Name = "Show Names",
     CurrentValue = ESPConfig.ShowNames,
@@ -309,7 +304,6 @@ ESPTab:CreateToggle({
     end,
 })
 
--- Show boxes
 ESPTab:CreateToggle({
     Name = "Show Boxes",
     CurrentValue = ESPConfig.ShowBoxes,
@@ -376,17 +370,41 @@ local function isVisible(fromPos, targetPart, ignoreList)
         return true
     end
 
-    -- hit the same character we're targeting => considered visible
     return result.Instance:IsDescendantOf(targetPart.Parent)
 end
 
--- Better, more precise target selection
+-- Universal-ish getMousePosition: supports FPS & third-person
+local function getMouseVector2()
+    -- If Mouse is valid, use its Hit position projected to screen
+    if Mouse and Mouse.Hit and Camera then
+        local hitPos = Mouse.Hit.p
+        local screenPos, onScreen = Camera:WorldToViewportPoint(hitPos)
+        if onScreen then
+            return Vector2.new(screenPos.X, screenPos.Y)
+        end
+    end
+
+    -- fallback: UserInputService mouse location
+    local mouseLoc = UserInputService:GetMouseLocation()
+    if mouseLoc then
+        return Vector2.new(mouseLoc.X, mouseLoc.Y)
+    end
+
+    -- final fallback: screen center
+    if Camera then
+        return Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    end
+
+    return Vector2.new(0, 0)
+end
+
+-- Better, more universal & precise target selection
 local function getBestTarget()
-    local camera = Workspace.CurrentCamera
+    if not Camera then Camera = Workspace.CurrentCamera end
+    local camera = Camera
     if not camera then return nil end
 
-    local mouseLoc = UserInputService:GetMouseLocation()
-    local mousePos = Vector2.new(mouseLoc.X, mouseLoc.Y)
+    local mousePos = getMouseVector2()
 
     local bestPlayer
     local bestScore = math.huge
@@ -411,11 +429,9 @@ local function getBestTarget()
                         end
 
                         if crosshairDist <= effectiveFOV then
-                            -- line-of-sight check for more legit + precise targeting
-                            local char = plr.Character
-                            if char and isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
-                                -- score is mostly based on crosshair distance, distance has smaller weight
-                                local score = crosshairDist + (dist3D * 0.02) -- was 0.05, now more aim-precise
+                            if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
+                                -- Stronger weight on closeness to aim, lighter distance penalty
+                                local score = crosshairDist + (dist3D * 0.02)
                                 if score < bestScore then
                                     bestScore = score
                                     bestPlayer = plr
@@ -481,6 +497,40 @@ Players.PlayerAdded:Connect(createESPForPlayer)
 Players.PlayerRemoving:Connect(removeESPForPlayer)
 
 ------------------------------------------------------
+-- NOCLIP SUPPORT
+------------------------------------------------------
+-- Keep a list of character BaseParts so noclip is constantly enforced
+local CharacterParts = {}
+
+local function rebuildCharacterPartList(char)
+    table.clear(CharacterParts)
+    if not char then return end
+
+    for _, obj in ipairs(char:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            CharacterParts[#CharacterParts + 1] = obj
+        end
+    end
+end
+
+local function onCharacterAdded(char)
+    rebuildCharacterPartList(char)
+
+    -- if noclip toggled on before respawn, re-apply
+    if NoclipConfig.Enabled then
+        for _, part in ipairs(CharacterParts) do
+            part.CanCollide = false
+        end
+    end
+end
+
+if LocalPlayer.Character then
+    onCharacterAdded(LocalPlayer.Character)
+end
+
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+------------------------------------------------------
 -- MAIN RENDERSTEPPED LOOP
 ------------------------------------------------------
 local lastFrameTime = tick()
@@ -490,7 +540,8 @@ RunService.RenderStepped:Connect(function()
     local dt = now - lastFrameTime
     lastFrameTime = now
 
-    local camera = Workspace.CurrentCamera
+    if not Camera then Camera = Workspace.CurrentCamera end
+    local camera = Camera
     if not camera then return end
 
     -- decide if we should aim this frame
@@ -502,7 +553,7 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- Aimbot aiming (more precise)
+    -- Aimbot aiming (universal & precise)
     --------------------------------------------------
     if AimbotConfig.Enabled and shouldAim then
         local targetPlayer = getBestTarget()
@@ -529,12 +580,15 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- Noclip logic
+    -- Noclip logic (more reliable)
     --------------------------------------------------
     if NoclipConfig.Enabled and LocalPlayer.Character then
-        local char = LocalPlayer.Character
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") and part.CanCollide then
+        if #CharacterParts == 0 then
+            rebuildCharacterPartList(LocalPlayer.Character)
+        end
+
+        for _, part in ipairs(CharacterParts) do
+            if part and part:IsA("BasePart") then
                 part.CanCollide = false
             end
         end
