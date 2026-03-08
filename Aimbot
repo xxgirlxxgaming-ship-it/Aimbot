@@ -77,9 +77,9 @@ local ESPConfig = {
     ShowBoxes  = true,
 }
 
+-- ONLY no‑reload now
 local MiscConfig = {
-    NoReload_Flick      = false,
-    InfiniteAmmo_Flick  = false,
+    NoReload_Flick = false,
 }
 
 -- HOLD/TOGGLE state
@@ -171,7 +171,7 @@ MainTab:CreateSection("Overview")
 
 MainTab:CreateParagraph({
     Title = "Frost Hub",
-    Content = "Aimbot modes (Rage/Legit/Custom), Sticky Aim, Autoshoot, Triggerbot, ESP, and Flick MISC (no reload & infinite ammo) for Flick.",
+    Content = "Aimbot modes (Rage/Legit/Custom), Sticky Aim, Autoshoot, Triggerbot, ESP, and Flick No-Reload for Flick.",
 })
 
 ------------------------------------------------------
@@ -478,14 +478,14 @@ ESPTab:CreateToggle({
 })
 
 ------------------------------------------------------
--- MISC TAB (Flick no-reload + infinite ammo)
+-- MISC TAB (Flick no‑reload only)
 ------------------------------------------------------
 local MiscTab = Window:CreateTab("MISC", 4483362458)
 MiscTab:CreateSection("Flick MISC")
 
 MiscTab:CreateParagraph({
     Title = "Flick Support",
-    Content = "Patches common gun tables in Flick to give no reload cooldown and infinite ammo (client-side).",
+    Content = "Attempts to remove reload cooldown for Flick guns (client-side).",
 })
 
 MiscTab:CreateToggle({
@@ -496,17 +496,6 @@ MiscTab:CreateToggle({
         MiscConfig.NoReload_Flick = Value
         playClick()
         print("[FrostHub DEBUG] NoReload_Flick:", MiscConfig.NoReload_Flick)
-    end,
-})
-
-MiscTab:CreateToggle({
-    Name = "Infinite Bullets (Flick)",
-    CurrentValue = MiscConfig.InfiniteAmmo_Flick,
-    Flag = "Frost_InfiniteAmmoFlick",
-    Callback = function(Value)
-        MiscConfig.InfiniteAmmo_Flick = Value
-        playClick()
-        print("[FrostHub DEBUG] InfiniteAmmo_Flick:", MiscConfig.InfiniteAmmo_Flick)
     end,
 })
 
@@ -676,7 +665,6 @@ local function scanFlickGuns()
     for _, obj in ipairs(getgc(true)) do
         if type(obj) == "table" then
             local hasAmmo = rawget(obj, "Ammo") or rawget(obj, "CurrentAmmo") or rawget(obj, "Mag")
-            local hasStored = rawget(obj, "StoredAmmo") or rawget(obj, "ReserveAmmo") or rawget(obj, "Reserve")
             local hasReloadTime = rawget(obj, "ReloadTime") or rawget(obj, "Reload")
 
             if hasAmmo and hasReloadTime then
@@ -691,44 +679,28 @@ end
 scanFlickGuns()
 
 local function applyFlickPatches()
+    if not MiscConfig.NoReload_Flick then return end
     if #FlickGuns == 0 then return end
 
     for _, gun in ipairs(FlickGuns) do
         pcall(function()
             -- Cache original
             gun._FH_OrigAmmo       = gun._FH_OrigAmmo       or gun.Ammo or gun.CurrentAmmo or gun.Mag
-            gun._FH_OrigStored     = gun._FH_OrigStored     or gun.StoredAmmo or gun.ReserveAmmo or gun.Reserve
             gun._FH_OrigReloadTime = gun._FH_OrigReloadTime or gun.ReloadTime or gun.Reload
 
-            if MiscConfig.InfiniteAmmo_Flick then
-                if gun.Ammo ~= nil then gun.Ammo = math.huge end
-                if gun.CurrentAmmo ~= nil then gun.CurrentAmmo = math.huge end
-                if gun.Mag ~= nil then gun.Mag = math.huge end
+            -- Force reload time to zero
+            if gun.ReloadTime ~= nil then gun.ReloadTime = 0 end
+            if gun.Reload ~= nil and type(gun.Reload) == "number" then gun.Reload = 0 end
 
-                if gun.StoredAmmo ~= nil then gun.StoredAmmo = math.huge end
-                if gun.ReserveAmmo ~= nil then gun.ReserveAmmo = math.huge end
-                if gun.Reserve ~= nil then gun.Reserve = math.huge end
-            else
-                if gun._FH_OrigAmmo and gun.Ammo then gun.Ammo = gun._FH_OrigAmmo end
-                if gun._FH_OrigAmmo and gun.CurrentAmmo then gun.CurrentAmmo = gun._FH_OrigAmmo end
-                if gun._FH_OrigAmmo and gun.Mag then gun.Mag = gun._FH_OrigAmmo end
+            -- Force state flags so gun thinks it can shoot
+            if gun.Reloading ~= nil then gun.Reloading = false end
+            if gun.CanReload ~= nil then gun.CanReload = true end
 
-                if gun._FH_OrigStored and gun.StoredAmmo then gun.StoredAmmo = gun._FH_OrigStored end
-                if gun._FH_OrigStored and gun.ReserveAmmo then gun.ReserveAmmo = gun._FH_OrigStored end
-                if gun._FH_OrigStored and gun.Reserve then gun.Reserve = gun._FH_OrigStored end
-            end
-
-            if MiscConfig.NoReload_Flick then
-                if gun.ReloadTime ~= nil then gun.ReloadTime = 0 end
-                if gun.Reload ~= nil and type(gun.Reload) == "number" then gun.Reload = 0 end
-                if gun.Reloading ~= nil then gun.Reloading = false end
-                if gun.CanReload ~= nil then gun.CanReload = true end
-            else
-                if gun._FH_OrigReloadTime and gun.ReloadTime then gun.ReloadTime = gun._FH_OrigReloadTime end
-                if gun._FH_OrigReloadTime and gun.Reload and type(gun.Reload) == "number" then
-                    gun.Reload = gun._FH_OrigReloadTime
-                end
-            end
+            -- Try to keep current ammo at least at mag size so game never triggers reload
+            local magSize = gun._FH_OrigAmmo or 30
+            if gun.Ammo ~= nil and gun.Ammo < magSize then gun.Ammo = magSize end
+            if gun.CurrentAmmo ~= nil and gun.CurrentAmmo < magSize then gun.CurrentAmmo = magSize end
+            if gun.Mag ~= nil and gun.Mag < magSize then gun.Mag = magSize end
         end)
     end
 end
@@ -876,9 +848,9 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- Apply Flick patches every frame while toggles on
+    -- Apply Flick patches every frame while toggle on
     --------------------------------------------------
-    if MiscConfig.NoReload_Flick or MiscConfig.InfiniteAmmo_Flick then
+    if MiscConfig.NoReload_Flick then
         applyFlickPatches()
     end
 
@@ -950,9 +922,9 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "Frost Hub",
-        Text = "Loaded Aimbot + Sticky + Flick MISC + ESP (bind: " .. AimbotConfig.BindKey.Name .. ")",
+        Text = "Loaded Aimbot + Sticky + Flick No-Reload + ESP (bind: " .. AimbotConfig.BindKey.Name .. ")",
         Duration = 5,
     })
 end)
 
-print("[FrostHub DEBUG] Initialization complete (Aimbot Modes, Sticky Aim, Autoshoot, Triggerbot, Flick MISC, ESP).")
+print("[FrostHub DEBUG] Initialization complete (Aimbot Modes, Sticky Aim, Autoshoot, Triggerbot, Flick No-Reload, ESP).")
