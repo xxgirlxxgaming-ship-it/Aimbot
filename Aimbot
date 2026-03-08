@@ -31,34 +31,38 @@ local function playClick()
 end
 
 ------------------------------------------------------
--- AIMBOT / ESP / NOCLIP / MOVEMENT CONFIG
+-- AIMBOT / ESP CONFIG
 ------------------------------------------------------
+
+-- Modes:
+--  "Rage"  = wide FOV, snappy, autoshoot, no vis check
+--  "Legit" = smaller FOV, smoother, vis check, no autoshoot
+--  "Custom" = your own values; presets do not override
+
 local AimbotConfig = {
-    Enabled              = false,
-    FOVRadius            = 180,   -- bigger FOV for easier target lock
-    Smoothing            = 0.85,  -- higher = faster snap but still lerped
-    TargetPart           = "Head", -- "Head" or "HumanoidRootPart"
-    BindKey              = Enum.KeyCode.E,
-    HoldToAim            = true,  -- true = hold, false = toggle
-    DynamicFOV           = true,
-    MaxDistance          = 1200,
-    VisibleCheck         = true,  -- line-of-sight check
+    Enabled           = false,
+
+    -- Overall behavior mode
+    Mode              = "Legit", -- "Rage", "Legit", "Custom"
+
+    -- Core aimbot settings
+    FOVRadius         = 180,      -- field of view for target locking
+    Smoothing         = 0.35,     -- 0–1 (lower = snappier)
+    TargetPart        = "Head",  -- "Head" or "HumanoidRootPart"
+
+    BindKey           = Enum.KeyCode.E,
+    HoldToAim         = true,     -- true = hold, false = toggle
+    DynamicFOV        = true,
+    MaxDistance       = 1200,
+    VisibleCheck      = true,     -- line-of-sight check
 
     -- Rage/legit behavior
-    InstantFlick         = false, -- rage-style instant snap
-    AutoShoot            = false, -- autoshoot when target visible
-    AutoShootWhileKey    = true,  -- if true, only autoshoot while aim key is active
-
-    -- Prediction & priority
-    Prediction           = true,
-    PredictionMultiplier = 1.25,   -- stronger lead by default
-
-    PriorityMode         = "Crosshair", -- "Crosshair" or "Distance"
-    StickyTarget         = true,        -- keep same target when possible
+    AutoShoot         = false,    -- autoshoot when target visible
+    AutoShootWhileKey = true,     -- if true, only autoshoot while aim key is active
 
     -- Triggerbot
-    Triggerbot           = false,
-    TriggerbotDelayMs    = 60,          -- 0–300 ms, slightly faster by default
+    Triggerbot        = false,
+    TriggerbotDelayMs = 60,       -- 0–300 ms
 }
 
 local ESPConfig = {
@@ -68,18 +72,7 @@ local ESPConfig = {
     ShowBoxes  = true,
 }
 
-local NoclipConfig = {
-    Enabled = false,
-}
-
-local MovementConfig = {
-    Enabled       = true,               -- global toggle for movement tweaks
-    SprintEnabled = false,
-    SprintSpeed   = 28,                 -- default sprint speed
-    NormalSpeed   = 16,                 -- Roblox default walkspeed
-    JumpPower     = 50,                 -- Roblox default jump (R15 often 50)
-}
-
+-- HOLD/TOGGLE state
 local holdingKey         = false  -- HOLD mode state
 local toggleAimingActive = false  -- TOGGLE mode state
 
@@ -93,6 +86,35 @@ print("[FrostHub DEBUG] Initial AimbotConfig:",
 -- executor mouse functions (optional)
 local mouse1press   = mouse1press   or (syn and syn.mouse1press)   or nil
 local mouse1release = mouse1release or (syn and syn.mouse1release) or nil
+
+------------------------------------------------------
+-- MODE PRESETS
+------------------------------------------------------
+local function ApplyAimbotMode()
+    if AimbotConfig.Mode == "Rage" then
+        AimbotConfig.FOVRadius    = 360
+        AimbotConfig.Smoothing    = 0.15 -- very snappy
+        AimbotConfig.VisibleCheck = false
+        AimbotConfig.AutoShoot    = true
+        AimbotConfig.DynamicFOV   = true
+
+    elseif AimbotConfig.Mode == "Legit" then
+        AimbotConfig.FOVRadius    = 80
+        AimbotConfig.Smoothing    = 0.45 -- smoother
+        AimbotConfig.VisibleCheck = true
+        AimbotConfig.AutoShoot    = false
+        AimbotConfig.DynamicFOV   = false
+
+    elseif AimbotConfig.Mode == "Custom" then
+        -- Do not override anything, user controls all values manually
+        return
+    end
+
+    print("[FrostHub DEBUG] Mode applied:", AimbotConfig.Mode, "FOV=", AimbotConfig.FOVRadius, "Smooth=", AimbotConfig.Smoothing)
+end
+
+-- Apply initial mode once
+ApplyAimbotMode()
 
 ------------------------------------------------------
 -- RAYFIELD WINDOW SETUP
@@ -118,7 +140,7 @@ MainTab:CreateSection("Welcome")
 
 MainTab:CreateParagraph({
     Title = "Frost Hub",
-    Content = "Simple clean interface with a legit-style aimbot, rage flicks, autoshoot, ESP, noclip, and movement tweaks.",
+    Content = "Simple clean interface with a mode-based aimbot, autoshoot, ESP.",
 })
 
 ------------------------------------------------------
@@ -126,6 +148,19 @@ MainTab:CreateParagraph({
 ------------------------------------------------------
 local AimbotTab = Window:CreateTab("Aimbot", 4483362458)
 AimbotTab:CreateSection("Aimbot Settings")
+
+-- 0) Mode dropdown
+AimbotTab:CreateDropdown({
+    Name = "Aimbot Mode",
+    Options = {"Rage", "Legit", "Custom"},
+    CurrentOption = AimbotConfig.Mode,
+    Flag = "Frost_AimbotModeType",
+    Callback = function(Option)
+        AimbotConfig.Mode = Option
+        playClick()
+        ApplyAimbotMode()
+    end,
+})
 
 -- 1) Enable toggle
 AimbotTab:CreateToggle({
@@ -147,7 +182,7 @@ end
 AimbotTab:CreateToggle({
     Name = updateModeText(),
     CurrentValue = AimbotConfig.HoldToAim,
-    Flag = "Frost_AimbotMode",
+    Flag = "Frost_AimbotHoldToggle",
     Callback = function(Value)
         AimbotConfig.HoldToAim = Value
         playClick()
@@ -190,21 +225,7 @@ AimbotTab:CreateSlider({
     end,
 })
 
--- 5) Smoothing slider (0.02–1) via 2–100 mapping
-AimbotTab:CreateSlider({
-    Name = "Smoothing (speed)",
-    Range = {2, 100}, -- map 2–100 to 0.02–1 internally
-    Increment = 1,
-    CurrentValue = math.floor(AimbotConfig.Smoothing * 100),
-    Flag = "Frost_Smoothing",
-    Callback = function(Value)
-        local mapped = math.clamp(Value / 100, 0.02, 1)
-        AimbotConfig.Smoothing = mapped
-        print("[FrostHub DEBUG] Smoothing changed to:", AimbotConfig.Smoothing)
-    end,
-})
-
--- 6) Max distance slider
+-- 5) Max distance slider
 AimbotTab:CreateSlider({
     Name = "Max Distance",
     Range = {100, 3000},
@@ -217,7 +238,7 @@ AimbotTab:CreateSlider({
     end,
 })
 
--- 7) Dynamic FOV toggle
+-- 6) Dynamic FOV toggle
 AimbotTab:CreateToggle({
     Name = "Dynamic FOV (scale with distance)",
     CurrentValue = AimbotConfig.DynamicFOV,
@@ -229,7 +250,7 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 8) Visible check toggle
+-- 7) Visible check toggle
 AimbotTab:CreateToggle({
     Name = "Visible Check (line of sight)",
     CurrentValue = AimbotConfig.VisibleCheck,
@@ -241,19 +262,7 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 9) Instant Flick (rage-style snap)
-AimbotTab:CreateToggle({
-    Name = "Instant Flick (rage)",
-    CurrentValue = AimbotConfig.InstantFlick,
-    Flag = "Frost_InstantFlick",
-    Callback = function(Value)
-        AimbotConfig.InstantFlick = Value
-        playClick()
-        print("[FrostHub DEBUG] InstantFlick:", AimbotConfig.InstantFlick)
-    end,
-})
-
--- 10) AutoShoot toggles
+-- 8) AutoShoot toggles
 AimbotTab:CreateToggle({
     Name = "Auto Shoot Enabled",
     CurrentValue = AimbotConfig.AutoShoot,
@@ -276,65 +285,7 @@ AimbotTab:CreateToggle({
     end,
 })
 
-------------------------------------------------------
--- EXTRA AIM FEATURES
-------------------------------------------------------
-
--- 11) Prediction toggle
-AimbotTab:CreateToggle({
-    Name = "Prediction (lead targets)",
-    CurrentValue = AimbotConfig.Prediction,
-    Flag = "Frost_Prediction",
-    Callback = function(Value)
-        AimbotConfig.Prediction = Value
-        playClick()
-        print("[FrostHub DEBUG] Prediction:", AimbotConfig.Prediction)
-    end,
-})
-
--- 12) Prediction multiplier slider
-AimbotTab:CreateSlider({
-    Name = "Prediction Multiplier",
-    Range = {50, 250},  -- 0.5–2.5
-    Increment = 5,
-    CurrentValue = math.floor((AimbotConfig.PredictionMultiplier or 1.25) * 100),
-    Flag = "Frost_PredictionMultiplier",
-    Callback = function(Value)
-        local mult = math.clamp(Value / 100, 0.5, 2.5)
-        AimbotConfig.PredictionMultiplier = mult
-        print("[FrostHub DEBUG] PredictionMultiplier:", AimbotConfig.PredictionMultiplier)
-    end,
-})
-
--- 13) Aim priority
-AimbotTab:CreateDropdown({
-    Name = "Aim Priority",
-    Options = {"Crosshair", "Distance"},
-    CurrentOption = AimbotConfig.PriorityMode,
-    Flag = "Frost_AimPriority",
-    Callback = function(Option)
-        if Option ~= "Crosshair" and Option ~= "Distance" then
-            Option = "Crosshair"
-        end
-        AimbotConfig.PriorityMode = Option
-        playClick()
-        print("[FrostHub DEBUG] PriorityMode:", AimbotConfig.PriorityMode)
-    end,
-})
-
--- 14) Sticky target toggle
-AimbotTab:CreateToggle({
-    Name = "Sticky Target (less switching)",
-    CurrentValue = AimbotConfig.StickyTarget,
-    Flag = "Frost_StickyTarget",
-    Callback = function(Value)
-        AimbotConfig.StickyTarget = Value
-        playClick()
-        print("[FrostHub DEBUG] StickyTarget:", AimbotConfig.StickyTarget)
-    end,
-})
-
--- 15) Triggerbot + delay
+-- 9) Triggerbot + delay
 AimbotTab:CreateToggle({
     Name = "Triggerbot Enabled",
     CurrentValue = AimbotConfig.Triggerbot,
@@ -472,78 +423,6 @@ ESPTab:CreateToggle({
 })
 
 ------------------------------------------------------
--- NOCLIP TAB
-------------------------------------------------------
-local NoclipTab = Window:CreateTab("Noclip", 4483362458)
-NoclipTab:CreateSection("Noclip Settings")
-
-NoclipTab:CreateParagraph({
-    Title = "Info",
-    Content = "Simple noclip: when enabled, your character's parts have collisions disabled so you can walk through walls and objects.",
-})
-
-NoclipTab:CreateToggle({
-    Name = "Noclip Enabled",
-    CurrentValue = NoclipConfig.Enabled,
-    Flag = "Frost_NoclipEnabled",
-    Callback = function(Value)
-        NoclipConfig.Enabled = Value
-        playClick()
-        print("[FrostHub DEBUG] Noclip Enabled:", NoclipConfig.Enabled)
-    end,
-})
-
-------------------------------------------------------
--- MOVEMENT TAB (SPEED / JUMP)
-------------------------------------------------------
-local MovementTab = Window:CreateTab("Movement", 4483362458)
-MovementTab:CreateSection("Speed / Jump")
-
-MovementTab:CreateToggle({
-    Name = "Movement Tweaks Enabled",
-    CurrentValue = MovementConfig.Enabled,
-    Flag = "Frost_MoveEnabled",
-    Callback = function(Value)
-        MovementConfig.Enabled = Value
-        playClick()
-    end,
-})
-
-MovementTab:CreateToggle({
-    Name = "Sprint Enabled",
-    CurrentValue = MovementConfig.SprintEnabled,
-    Flag = "Frost_SprintEnabled",
-    Callback = function(Value)
-        MovementConfig.SprintEnabled = Value
-        playClick()
-    end,
-})
-
-MovementTab:CreateSlider({
-    Name = "Sprint Speed",
-    Range = {16, 80},
-    Increment = 1,
-    CurrentValue = MovementConfig.SprintSpeed,
-    Flag = "Frost_SprintSpeed",
-    Callback = function(Value)
-        MovementConfig.SprintSpeed = Value
-        print("[FrostHub DEBUG] SprintSpeed:", MovementConfig.SprintSpeed)
-    end,
-})
-
-MovementTab:CreateSlider({
-    Name = "Jump Power",
-    Range = {30, 150},
-    Increment = 5,
-    CurrentValue = MovementConfig.JumpPower,
-    Flag = "Frost_JumpPower",
-    Callback = function(Value)
-        MovementConfig.JumpPower = Value
-        print("[FrostHub DEBUG] JumpPower:", MovementConfig.JumpPower)
-    end,
-})
-
-------------------------------------------------------
 -- AIMBOT / ESP CORE LOGIC
 ------------------------------------------------------
 local function isAlive(plr)
@@ -599,100 +478,6 @@ local function isVisible(fromPos, targetPart, ignoreList)
     return result.Instance:IsDescendantOf(targetPart.Parent)
 end
 
--- Cached sticky target
-local stickyTargetPlayer = nil
-
--- Target selection with strong crosshair priority + sticky
-local function getBestTarget(camera)
-    camera = camera or Workspace.CurrentCamera
-    if not camera then return nil end
-
-    local mouseLoc = UserInputService:GetMouseLocation()
-    local mousePos = Vector2.new(mouseLoc.X, mouseLoc.Y)
-
-    -- 1) If sticky target is enabled and still valid, keep it
-    if AimbotConfig.StickyTarget and stickyTargetPlayer and isAlive(stickyTargetPlayer) then
-        local part = getTargetPart(stickyTargetPlayer)
-        if part then
-            local worldPos = part.Position
-            local dist3D = (worldPos - camera.CFrame.Position).Magnitude
-            if dist3D <= AimbotConfig.MaxDistance then
-                local screenPos, onScreen = camera:WorldToViewportPoint(worldPos)
-                if onScreen and screenPos.Z > 0 then
-                    local target2D = Vector2.new(screenPos.X, screenPos.Y)
-                    local crosshairDist = (mousePos - target2D).Magnitude
-
-                    local effectiveFOV = AimbotConfig.FOVRadius
-                    if AimbotConfig.DynamicFOV then
-                        local scale = math.clamp(1 - (dist3D / (AimbotConfig.MaxDistance * 1.5)), 0.3, 1)
-                        effectiveFOV = effectiveFOV * scale
-                    end
-
-                    if crosshairDist <= effectiveFOV then
-                        if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
-                            return stickyTargetPlayer
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- 2) Normal search
-    local bestPlayer
-    local bestScore = math.huge
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and isAlive(plr) then
-            local part = getTargetPart(plr)
-            if part then
-                local worldPos = part.Position
-                local dist3D = (worldPos - camera.CFrame.Position).Magnitude
-
-                if dist3D <= AimbotConfig.MaxDistance then
-                    local screenPos, onScreen = camera:WorldToViewportPoint(worldPos)
-                    if onScreen and screenPos.Z > 0 then
-                        local target2D = Vector2.new(screenPos.X, screenPos.Y)
-                        local crosshairDist = (mousePos - target2D).Magnitude
-
-                        local effectiveFOV = AimbotConfig.FOVRadius
-                        if AimbotConfig.DynamicFOV then
-                            local scale = math.clamp(1 - (dist3D / (AimbotConfig.MaxDistance * 1.5)), 0.3, 1)
-                            effectiveFOV = effectiveFOV * scale
-                        end
-
-                        -- use tighter FOV ring for precision
-                        if crosshairDist <= effectiveFOV * 0.9 then
-                            if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
-                                local score
-                                if AimbotConfig.PriorityMode == "Distance" then
-                                    score = dist3D
-                                else
-                                    -- Heavier crosshair weight = more precise
-                                    score = crosshairDist * 1.0 + (dist3D * 0.01)
-                                end
-
-                                if score < bestScore then
-                                    bestScore = score
-                                    bestPlayer = plr
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    if AimbotConfig.StickyTarget then
-        stickyTargetPlayer = bestPlayer
-    else
-        stickyTargetPlayer = nil
-    end
-
-    return bestPlayer
-end
-
 ------------------------------------------------------
 -- ESP LOGIC
 ------------------------------------------------------
@@ -743,37 +528,7 @@ Players.PlayerAdded:Connect(createESPForPlayer)
 Players.PlayerRemoving:Connect(removeESPForPlayer)
 
 ------------------------------------------------------
--- MOVEMENT CORE (SPEED / JUMP)
-------------------------------------------------------
-local function applyMovement()
-    if not MovementConfig.Enabled then return end
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-
-    if MovementConfig.SprintEnabled then
-        hum.WalkSpeed = MovementConfig.SprintSpeed
-    else
-        hum.WalkSpeed = MovementConfig.NormalSpeed
-    end
-
-    hum.JumpPower = MovementConfig.JumpPower
-end
-
-local function onCharacterAdded(char)
-    task.wait(0.2)
-    applyMovement()
-end
-
-if LocalPlayer.Character then
-    onCharacterAdded(LocalPlayer.Character)
-end
-
-LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
-
-------------------------------------------------------
--- MAIN RENDERSTEPPED LOOP (AIMBOT, TRIGGERBOT, AUTOSHOOT, NOCLIP, ESP)
+-- MAIN RENDERSTEPPED LOOP (AIMBOT, TRIGGERBOT, AUTOSHOOT, ESP)
 ------------------------------------------------------
 local lastFrameTime   = tick()
 local autoshootDown   = false
@@ -787,9 +542,6 @@ RunService.RenderStepped:Connect(function()
     local camera = Workspace.CurrentCamera
     if not camera then return end
 
-    -- keep movement active
-    applyMovement()
-
     -- decide if we should aim this frame
     local shouldAim
     if AimbotConfig.HoldToAim then
@@ -802,49 +554,76 @@ RunService.RenderStepped:Connect(function()
     local currentTargetPlayer
 
     --------------------------------------------------
-    -- Aimbot aiming (legit or instant flick) with improved prediction
+    -- Simple target selection (closest to center within FOV)
+    --------------------------------------------------
+    local function getBestTarget()
+        local bestPlayer
+        local bestMetric = math.huge
+
+        local viewport = camera.ViewportSize
+        local screenCenter = Vector2.new(viewport.X / 2, viewport.Y / 2)
+
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and isAlive(plr) then
+                local part = getTargetPart(plr)
+                if part then
+                    local worldPos = part.Position
+                    local dist3D = (worldPos - camera.CFrame.Position).Magnitude
+
+                    if dist3D <= AimbotConfig.MaxDistance then
+                        local screenPos, onScreen = camera:WorldToViewportPoint(worldPos)
+                        if onScreen and screenPos.Z > 0 then
+                            local pos2D = Vector2.new(screenPos.X, screenPos.Y)
+                            local fovDist = (pos2D - screenCenter).Magnitude
+
+                            local effectiveFOV = AimbotConfig.FOVRadius
+                            if AimbotConfig.DynamicFOV then
+                                local scale = math.clamp(1 - (dist3D / (AimbotConfig.MaxDistance * 1.5)), 0.3, 1)
+                                effectiveFOV = effectiveFOV * scale
+                            end
+
+                            if fovDist <= effectiveFOV then
+                                if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
+                                    -- metric: mostly FOV distance, with slight distance factor
+                                    local metric = fovDist + dist3D * 0.01
+                                    if metric < bestMetric then
+                                        bestMetric = metric
+                                        bestPlayer = plr
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        return bestPlayer
+    end
+
+    --------------------------------------------------
+    -- Aimbot aiming
     --------------------------------------------------
     if AimbotConfig.Enabled and shouldAim then
-        currentTargetPlayer = getBestTarget(camera)
+        currentTargetPlayer = getBestTarget()
         if currentTargetPlayer and currentTargetPlayer.Character then
             local part = getTargetPart(currentTargetPlayer)
             if part then
                 currentTargetPart = part
 
                 local targetPos = part.Position
-
-                -- velocity-based prediction with stronger, stable lead
-                if AimbotConfig.Prediction then
-                    local root = currentTargetPlayer.Character:FindFirstChild("HumanoidRootPart") or part
-                    if root and root:IsA("BasePart") then
-                        local vel = root.Velocity
-                        local leadTime = 0.14 * (AimbotConfig.PredictionMultiplier or 1.25) -- ~140ms lead
-                        targetPos = targetPos + (vel * leadTime)
-                    end
-                end
-
-                local camCF = camera.CFrame
-                local camPos = camCF.Position
+                local camCF    = camera.CFrame
+                local camPos   = camCF.Position
                 local toTarget = (targetPos - camPos)
 
                 if toTarget.Magnitude > 1 then
                     local desiredCF = CFrame.new(camPos, camPos + toTarget)
 
-                    if AimbotConfig.InstantFlick then
-                        -- Rage-style instant snap
-                        camera.CFrame = desiredCF
-                    else
-                        -- Smooth but fast legit aim
-                        local speed = math.clamp(AimbotConfig.Smoothing, 0.02, 1)
-                        local alpha = math.clamp(speed * dt * 90, 0, 1)
+                    -- Use smoothing directly
+                    local smooth = math.clamp(AimbotConfig.Smoothing, 0.02, 0.95)
+                    local alpha  = math.clamp(smooth * dt * 90, 0, 1)
 
-                        local angleDot = camCF.LookVector:Dot(toTarget.Unit)
-                        if angleDot < 0.9999 then
-                            camera.CFrame = camCF:Lerp(desiredCF, alpha)
-                        else
-                            camera.CFrame = desiredCF
-                        end
-                    end
+                    camera.CFrame = camCF:Lerp(desiredCF, alpha)
                 end
             end
         end
@@ -896,18 +675,6 @@ RunService.RenderStepped:Connect(function()
                         pcall(function() mouse1release() end)
                     end
                 end
-            end
-        end
-    end
-
-    --------------------------------------------------
-    -- Noclip logic
-    --------------------------------------------------
-    if NoclipConfig.Enabled and LocalPlayer.Character then
-        local char = LocalPlayer.Character
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") and part.CanCollide then
-                part.CanCollide = false
             end
         end
     end
@@ -980,9 +747,9 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "Frost Hub (DEBUG)",
-        Text = "Loaded Aimbot (rage+autoshoot+trigger) + ESP + Noclip + Movement (aim bind: " .. AimbotConfig.BindKey.Name .. ")",
+        Text = "Loaded Aimbot (modes+autoshoot+trigger) + ESP (aim bind: " .. AimbotConfig.BindKey.Name .. ")",
         Duration = 5,
     })
 end)
 
-print("[FrostHub DEBUG] Initialization complete (Rayfield UI with Aimbot, Rage Flicks, Autoshoot, Triggerbot, ESP, Noclip, Movement).")
+print("[FrostHub DEBUG] Initialization complete (Rayfield UI with Aimbot Modes, Autoshoot, Triggerbot, ESP).")
