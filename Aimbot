@@ -37,12 +37,17 @@ local AimbotConfig = {
     Enabled = false,
     FOVRadius = 140,      -- tighter default FOV for more precision (was 220)
     Smoothing = 0.55,     -- slightly faster by default
-    TargetPart = "Head",
+    TargetPart = "Head", -- "Head" or "HumanoidRootPart"
     BindKey = Enum.KeyCode.E,
     HoldToAim = true,     -- true = hold, false = toggle
     DynamicFOV = true,
     MaxDistance = 800,
-    VisibleCheck = true,  -- NEW: only target visible players (line-of-sight)
+    VisibleCheck = true,  -- only target visible players (line-of-sight)
+
+    -- NEW
+    InstantFlick = false,     -- rage-style instant snap
+    AutoShoot = false,        -- autoshoot when target visible
+    AutoShootWhileKey = true, -- if true, only autoshoot while aim key is active
 }
 
 local holdingKey = false          -- HOLD mode state
@@ -66,6 +71,10 @@ local NoclipConfig = {
     Enabled = false,
 }
 
+-- executor mouse functions (optional)
+local mouse1press = mouse1press or (syn and syn.mouse1press) or nil
+local mouse1release = mouse1release or (syn and syn.mouse1release) or nil
+
 ------------------------------------------------------
 -- RAYFIELD WINDOW SETUP
 ------------------------------------------------------
@@ -73,7 +82,7 @@ local Window = Rayfield:CreateWindow({
     Name = "WINTER HUB | v1.0",
     LoadingTitle = "Frost Hub",
     LoadingSubtitle = "v1.3 DEBUG",
-    KeySystem = false, -- set to true if you want Rayfield's key system instead of your own
+    KeySystem = false,
     ConfigurationSaving = {
         Enabled = false,
         FolderName = nil,
@@ -90,7 +99,7 @@ MainTab:CreateSection("Welcome")
 
 MainTab:CreateParagraph({
     Title = "Frost Hub",
-    Content = "Simple clean interface with a legit-style aimbot, ESP, and noclip. Use the Aimbot tab to configure aim assist, the ESP tab for visual highlights, and the Noclip tab for wall-walk settings.",
+    Content = "Simple clean interface with a legit-style aimbot, rage flicks, autoshoot, ESP, and noclip. Use the Aimbot tab for aim assist, ESP tab for visuals, and Noclip tab for wall-walk.",
 })
 
 ------------------------------------------------------
@@ -129,19 +138,21 @@ AimbotTab:CreateToggle({
         toggleAimingActive = false
 
         print("[FrostHub DEBUG] Aimbot HoldToAim:", AimbotConfig.HoldToAim)
-        -- Rayfield can't dynamically rename this toggle from inside itself,
-        -- but log still reflects the mode.
     end,
 })
 
--- 3) Target Part dropdown
+-- 3) Target Part dropdown (fixed logic)
 AimbotTab:CreateDropdown({
     Name = "Target Part",
     Options = {"Head", "HumanoidRootPart"},
     CurrentOption = AimbotConfig.TargetPart,
     Flag = "Frost_TargetPart",
     Callback = function(Option)
-        AimbotConfig.TargetPart = Option
+        if Option == "Head" or Option == "HumanoidRootPart" then
+            AimbotConfig.TargetPart = Option
+        else
+            AimbotConfig.TargetPart = "Head"
+        end
         playClick()
         print("[FrostHub DEBUG] TargetPart switched to:", AimbotConfig.TargetPart)
     end,
@@ -211,7 +222,42 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 9) Bind key info + change button (manual listener)
+-- 9) Instant Flick (rage-style snap)
+AimbotTab:CreateToggle({
+    Name = "Instant Flick (rage)",
+    CurrentValue = AimbotConfig.InstantFlick,
+    Flag = "Frost_InstantFlick",
+    Callback = function(Value)
+        AimbotConfig.InstantFlick = Value
+        playClick()
+        print("[FrostHub DEBUG] InstantFlick:", AimbotConfig.InstantFlick)
+    end,
+})
+
+-- 10) AutoShoot toggles
+AimbotTab:CreateToggle({
+    Name = "Auto Shoot Enabled",
+    CurrentValue = AimbotConfig.AutoShoot,
+    Flag = "Frost_AutoShoot",
+    Callback = function(Value)
+        AimbotConfig.AutoShoot = Value
+        playClick()
+        print("[FrostHub DEBUG] AutoShoot:", AimbotConfig.AutoShoot)
+    end,
+})
+
+AimbotTab:CreateToggle({
+    Name = "Autoshoot Key Held Only",
+    CurrentValue = AimbotConfig.AutoShootWhileKey,
+    Flag = "Frost_AutoShootWhileKey",
+    Callback = function(Value)
+        AimbotConfig.AutoShootWhileKey = Value
+        playClick()
+        print("[FrostHub DEBUG] AutoShootWhileKey:", AimbotConfig.AutoShootWhileKey)
+    end,
+})
+
+-- 11) Bind key info + change button (manual listener)
 AimbotTab:CreateParagraph({
     Title = "Bind Key",
     Content = "Current bind: " .. AimbotConfig.BindKey.Name .. " (HOLD or TOGGLE depending on mode above). Click 'Change Bind' below and then press any key.",
@@ -356,7 +402,26 @@ end
 local function getTargetPart(plr)
     local char = plr.Character
     if not char then return nil end
-    return char:FindFirstChild(AimbotConfig.TargetPart) or char:FindFirstChild("Head")
+
+    -- Prefer selected target part exactly
+    local selected = AimbotConfig.TargetPart
+    local part = char:FindFirstChild(selected)
+    if part and part:IsA("BasePart") then
+        return part
+    end
+
+    -- Fallbacks to keep aimbot working if game has no HRP or custom rig
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hrp and hrp:IsA("BasePart") then
+        return hrp
+    end
+
+    local head = char:FindFirstChild("Head")
+    if head and head:IsA("BasePart") then
+        return head
+    end
+
+    return nil
 end
 
 -- Raycast params cache for visibility check
@@ -380,7 +445,7 @@ local function isVisible(fromPos, targetPart, ignoreList)
     return result.Instance:IsDescendantOf(targetPart.Parent)
 end
 
--- Better, more precise target selection
+-- Better target selection
 local function getBestTarget()
     local camera = Workspace.CurrentCamera
     if not camera then return nil end
@@ -412,10 +477,8 @@ local function getBestTarget()
 
                         if crosshairDist <= effectiveFOV then
                             -- line-of-sight check for more legit + precise targeting
-                            local char = plr.Character
-                            if char and isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
-                                -- score is mostly based on crosshair distance, distance has smaller weight
-                                local score = crosshairDist + (dist3D * 0.02) -- was 0.05, now more aim-precise
+                            if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
+                                local score = crosshairDist + (dist3D * 0.02)
                                 if score < bestScore then
                                     bestScore = score
                                     bestPlayer = plr
@@ -484,6 +547,7 @@ Players.PlayerRemoving:Connect(removeESPForPlayer)
 -- MAIN RENDERSTEPPED LOOP
 ------------------------------------------------------
 local lastFrameTime = tick()
+local autoshootDown = false
 
 RunService.RenderStepped:Connect(function()
     local now = tick()
@@ -501,14 +565,18 @@ RunService.RenderStepped:Connect(function()
         shouldAim = toggleAimingActive
     end
 
+    local currentTarget
+
     --------------------------------------------------
-    -- Aimbot aiming (more precise)
+    -- Aimbot aiming (legit or instant flick)
     --------------------------------------------------
     if AimbotConfig.Enabled and shouldAim then
         local targetPlayer = getBestTarget()
         if targetPlayer and targetPlayer.Character then
             local part = getTargetPart(targetPlayer)
             if part then
+                currentTarget = part
+
                 local targetPos = part.Position
                 local camCF = camera.CFrame
                 local camPos = camCF.Position
@@ -516,15 +584,48 @@ RunService.RenderStepped:Connect(function()
 
                 if toTarget.Magnitude > 1 then
                     local desiredCF = CFrame.new(camPos, camPos + toTarget)
-                    local speed = math.clamp(AimbotConfig.Smoothing, 0.02, 1)
-                    local alpha = math.clamp(speed * dt * 75, 0, 1)
 
-                    local angleDot = camCF.LookVector:Dot(toTarget.Unit)
-                    if angleDot < 0.9999 then
-                        camera.CFrame = camCF:Lerp(desiredCF, alpha)
+                    if AimbotConfig.InstantFlick then
+                        -- Rage-style instant snap
+                        camera.CFrame = desiredCF
+                    else
+                        -- Smooth legit aim
+                        local speed = math.clamp(AimbotConfig.Smoothing, 0.02, 1)
+                        local alpha = math.clamp(speed * dt * 75, 0, 1)
+
+                        local angleDot = camCF.LookVector:Dot(toTarget.Unit)
+                        if angleDot < 0.9999 then
+                            camera.CFrame = camCF:Lerp(desiredCF, alpha)
+                        end
                     end
                 end
             end
+        end
+    end
+
+    --------------------------------------------------
+    -- Autoshoot (when target in FOV & visible)
+    --------------------------------------------------
+    local canAutoshoot = false
+    if AimbotConfig.AutoShoot and (not AimbotConfig.AutoShootWhileKey or shouldAim) then
+        local tPlayer = getBestTarget()
+        if tPlayer and tPlayer.Character then
+            local tPart = getTargetPart(tPlayer)
+            if tPart and isVisible(camera.CFrame.Position, tPart, {LocalPlayer.Character, camera}) then
+                canAutoshoot = true
+            end
+        end
+    end
+
+    if canAutoshoot and mouse1press and mouse1release then
+        if not autoshootDown then
+            autoshootDown = true
+            pcall(function() mouse1press() end)
+        end
+    else
+        if autoshootDown and mouse1release then
+            autoshootDown = false
+            pcall(function() mouse1release() end)
         end
     end
 
@@ -607,9 +708,9 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "Frost Hub (DEBUG)",
-        Text = "Loaded Aimbot + ESP + Noclip (aim bind: " .. AimbotConfig.BindKey.Name .. ")",
+        Text = "Loaded Aimbot (rage+autoshoot) + ESP + Noclip (aim bind: " .. AimbotConfig.BindKey.Name .. ")",
         Duration = 5,
     })
 end)
 
-print("[FrostHub DEBUG] Initialization complete (Rayfield UI with Aimbot, ESP, Noclip).")
+print("[FrostHub DEBUG] Initialization complete (Rayfield UI with Aimbot, Rage Flicks, Autoshoot, ESP, Noclip).")
