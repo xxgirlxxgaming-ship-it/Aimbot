@@ -4,15 +4,15 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 ------------------------------------------------------
 -- SERVICES & PLAYER
 ------------------------------------------------------
-local Players      = game:GetService("Players")
-local RunService   = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local StarterGui   = game:GetService("StarterGui")
-local Workspace    = game:GetService("Workspace")
-local HttpService  = game:GetService("HttpService")
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local UserInputService   = game:GetService("UserInputService")
+local StarterGui         = game:GetService("StarterGui")
+local Workspace          = game:GetService("Workspace")
+local HttpService        = game:GetService("HttpService")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 
-local LocalPlayer  = Players.LocalPlayer
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer        = Players.LocalPlayer
 
 print("[FrostHub DEBUG] LocalPlayer:", LocalPlayer and LocalPlayer.Name or "nil")
 
@@ -23,8 +23,8 @@ local function playClick()
     pcall(function()
         local s = Instance.new("Sound")
         s.SoundId = "rbxassetid://2865227271"
-        s.Volume = 0.5
-        s.Parent = game:GetService("SoundService")
+        s.Volume  = 0.5
+        s.Parent  = game:GetService("SoundService")
         s:Play()
         s.Ended:Connect(function()
             s:Destroy()
@@ -37,9 +37,9 @@ end
 ------------------------------------------------------
 
 -- Modes:
---  "Rage"  = strongest lock, fastest, minimal vis check
---  "Legit" = smoother, vis check, no autoshoot
---  "Custom" = your own values; presets do not override
+--  "Rage"   = strongest lock, very snappy, minimal vis check
+--  "Legit"  = smoother, vis check, no autoshoot by default
+--  "Custom" = you control values, presets don't overwrite
 
 local AimbotConfig = {
     Enabled           = false,
@@ -96,6 +96,7 @@ print("[FrostHub DEBUG] Initial AimbotConfig:",
 -- executor mouse functions (optional)
 local mouse1press   = mouse1press   or (syn and syn.mouse1press)   or nil
 local mouse1release = mouse1release or (syn and syn.mouse1release) or nil
+local mousemoverel  = mousemoverel  or (syn and syn.mousemoverel)  or nil
 
 ------------------------------------------------------
 -- MODE PRESETS (BUFFED)
@@ -134,25 +135,25 @@ end
 ApplyAimbotMode()
 
 ------------------------------------------------------
--- RAYFIELD WINDOW SETUP (BLUE THEME + CLEANER UI)
+-- RAYFIELD WINDOW SETUP (BEAUTIFUL BLUE THEME)
 ------------------------------------------------------
 local BlueTheme = {
-    PrimaryColor      = Color3.fromRGB(40, 120, 220),
-    SecondaryColor    = Color3.fromRGB(18, 28, 50),
-    Background        = Color3.fromRGB(10, 15, 30),
-    Divider           = Color3.fromRGB(60, 90, 150),
+    PrimaryColor      = Color3.fromRGB(55, 145, 255),
+    SecondaryColor    = Color3.fromRGB(20, 32, 70),
+    Background        = Color3.fromRGB(8, 14, 34),
+    Divider           = Color3.fromRGB(70, 105, 180),
     TextColor         = Color3.fromRGB(230, 240, 255),
-    ElementBackground = Color3.fromRGB(15, 25, 45),
-    ElementStroke     = Color3.fromRGB(70, 110, 190),
+    ElementBackground = Color3.fromRGB(15, 25, 55),
+    ElementStroke     = Color3.fromRGB(80, 130, 215),
     ElementText       = Color3.fromRGB(220, 230, 255),
     ElementBorder     = Color3.fromRGB(0, 0, 0),
-    Selected          = Color3.fromRGB(70, 150, 255)
+    Selected          = Color3.fromRGB(90, 170, 255)
 }
 
 local Window = Rayfield:CreateWindow({
     Name = "WINTER HUB | v1.0",
     LoadingTitle = "Frost Hub",
-    LoadingSubtitle = "v1.4 DEBUG",
+    LoadingSubtitle = "Aimbot | ESP | Flick",
     KeySystem = false,
     ConfigurationSaving = {
         Enabled = false,
@@ -171,14 +172,19 @@ MainTab:CreateSection("Overview")
 
 MainTab:CreateParagraph({
     Title = "Frost Hub",
-    Content = "Aimbot modes (Rage/Legit/Custom), Sticky Aim, Autoshoot, Triggerbot, ESP, and Flick No-Reload for Flick.",
+    Content = "Clean aimbot modes (Rage / Legit / Custom), Sticky Aim, Autoshoot, Triggerbot, ESP and Flick No‑Reload.",
+})
+
+MainTab:CreateParagraph({
+    Title = "Quick Tips",
+    Content = "1) Set your mode (Rage / Legit / Custom). 2) Pick your bind key. 3) Turn on aimbot & options. 4) Flick No‑Reload is in the MISC tab.",
 })
 
 ------------------------------------------------------
 -- AIMBOT TAB (with Sticky Aim)
 ------------------------------------------------------
 local AimbotTab = Window:CreateTab("Aimbot", 4483362458)
-AimbotTab:CreateSection("Core Settings")
+AimbotTab:CreateSection("Mode & Toggle")
 
 -- 0) Mode dropdown
 AimbotTab:CreateDropdown({
@@ -195,7 +201,7 @@ AimbotTab:CreateDropdown({
 
 -- 1) Enable toggle
 AimbotTab:CreateToggle({
-    Name = "Aimbot Enabled",
+    Name = "Enable Aimbot",
     CurrentValue = AimbotConfig.Enabled,
     Flag = "Frost_AimbotEnabled",
     Callback = function(Value)
@@ -206,12 +212,13 @@ AimbotTab:CreateToggle({
 })
 
 -- 2) Aimbot mode: HOLD / TOGGLE
-local function updateModeText()
-    return AimbotConfig.HoldToAim and "Aim Mode: HOLD (while key held)" or "Aim Mode: TOGGLE (press to switch)"
+local function getModeText()
+    return AimbotConfig.HoldToAim and "Aim Key Mode: HOLD" or "Aim Key Mode: TOGGLE"
 end
 
-AimbotTab:CreateToggle({
-    Name = updateModeText(),
+local AimModeToggle
+AimModeToggle = AimbotTab:CreateToggle({
+    Name = getModeText(),
     CurrentValue = AimbotConfig.HoldToAim,
     Flag = "Frost_AimbotHoldToggle",
     Callback = function(Value)
@@ -222,8 +229,15 @@ AimbotTab:CreateToggle({
         toggleAimingActive = false
 
         print("[FrostHub DEBUG] Aimbot HoldToAim:", AimbotConfig.HoldToAim)
+
+        -- Update text to reflect current mode
+        if AimModeToggle and AimModeToggle.Set then
+            AimModeToggle.Set({Name = getModeText()})
+        end
     end,
 })
+
+AimbotTab:CreateSection("Target & Range")
 
 -- 3) Target Part dropdown
 AimbotTab:CreateDropdown({
@@ -244,7 +258,7 @@ AimbotTab:CreateDropdown({
 
 -- 4) Max distance slider
 AimbotTab:CreateSlider({
-    Name = "Max Distance",
+    Name = "Max Distance (studs)",
     Range = {100, 3000},
     Increment = 50,
     CurrentValue = AimbotConfig.MaxDistance,
@@ -254,6 +268,8 @@ AimbotTab:CreateSlider({
         print("[FrostHub DEBUG] MaxDistance changed to:", AimbotConfig.MaxDistance)
     end,
 })
+
+AimbotTab:CreateSection("Accuracy & Checks")
 
 -- 5) Smoothing slider (controls how hard it locks)
 AimbotTab:CreateSlider({
@@ -281,9 +297,11 @@ AimbotTab:CreateToggle({
     end,
 })
 
+AimbotTab:CreateSection("Autoshoot & Triggerbot")
+
 -- 7) AutoShoot toggles
 AimbotTab:CreateToggle({
-    Name = "Auto Shoot Enabled",
+    Name = "Autoshoot (on target)",
     CurrentValue = AimbotConfig.AutoShoot,
     Flag = "Frost_AutoShoot",
     Callback = function(Value)
@@ -294,7 +312,7 @@ AimbotTab:CreateToggle({
 })
 
 AimbotTab:CreateToggle({
-    Name = "Autoshoot Only While Key Held",
+    Name = "Autoshoot Only While Aim Key Active",
     CurrentValue = AimbotConfig.AutoShootWhileKey,
     Flag = "Frost_AutoShootWhileKey",
     Callback = function(Value)
@@ -304,11 +322,9 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 8) Triggerbot + delay
-AimbotTab:CreateSection("Triggerbot")
-
+-- Triggerbot + delay
 AimbotTab:CreateToggle({
-    Name = "Triggerbot Enabled",
+    Name = "Triggerbot",
     CurrentValue = AimbotConfig.Triggerbot,
     Flag = "Frost_Triggerbot",
     Callback = function(Value)
@@ -330,7 +346,6 @@ AimbotTab:CreateSlider({
     end,
 })
 
--- Sticky Aim section
 AimbotTab:CreateSection("Sticky Aim")
 
 AimbotTab:CreateToggle({
@@ -371,23 +386,28 @@ AimbotTab:CreateSlider({
 ------------------------------------------------------
 -- BIND KEY UI
 ------------------------------------------------------
-AimbotTab:CreateSection("Bind Key")
+AimbotTab:CreateSection("Aim Key Bind")
 
-AimbotTab:CreateParagraph({
+local bindParagraph = AimbotTab:CreateParagraph({
     Title = "Current Bind",
-    Content = "Current bind: " .. AimbotConfig.BindKey.Name ..
-        " (HOLD or TOGGLE depending on mode above). Click 'Change Bind' then press any key.",
+    Content = "Current bind: " .. AimbotConfig.BindKey.Name .. " | Mode: " .. (AimbotConfig.HoldToAim and "HOLD" or "TOGGLE")
 })
 
 local waitingForKey = false
 
 AimbotTab:CreateButton({
-    Name = "Change Bind",
+    Name = "Change Bind Key",
     Callback = function()
         if waitingForKey then return end
         waitingForKey = true
         playClick()
         print("[FrostHub DEBUG] Waiting for new bind key...")
+
+        if bindParagraph and bindParagraph.Set then
+            bindParagraph.Set({
+                Content = "Press a key to set as aimbot bind..."
+            })
+        end
     end,
 })
 
@@ -397,6 +417,12 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         AimbotConfig.BindKey = input.KeyCode
         playClick()
         print("[FrostHub DEBUG] BindKey changed to:", AimbotConfig.BindKey.Name)
+
+        if bindParagraph and bindParagraph.Set then
+            bindParagraph.Set({
+                Content = "Current bind: " .. AimbotConfig.BindKey.Name .. " | Mode: " .. (AimbotConfig.HoldToAim and "HOLD" or "TOGGLE")
+            })
+        end
         return
     end
 
@@ -423,18 +449,18 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
 end)
 
 ------------------------------------------------------
--- ESP TAB
+-- ESP TAB (Optimized)
 ------------------------------------------------------
 local ESPTab = Window:CreateTab("ESP", 4483362458)
 ESPTab:CreateSection("ESP Settings")
 
 ESPTab:CreateParagraph({
     Title = "Info",
-    Content = "Draws boxes and names on players. Works in executors that support the Drawing API.",
+    Content = "Draws boxes and names on players (uses Drawing API). Disable ESP for max FPS.", 
 })
 
 ESPTab:CreateToggle({
-    Name = "ESP Enabled",
+    Name = "Enable ESP",
     CurrentValue = ESPConfig.Enabled,
     Flag = "Frost_ESPEnabled",
     Callback = function(Value)
@@ -478,14 +504,14 @@ ESPTab:CreateToggle({
 })
 
 ------------------------------------------------------
--- MISC TAB (Flick no‑reload only)
+-- MISC TAB (Flick no‑reload + debug)
 ------------------------------------------------------
 local MiscTab = Window:CreateTab("MISC", 4483362458)
-MiscTab:CreateSection("Flick MISC")
+MiscTab:CreateSection("Flick Support")
 
 MiscTab:CreateParagraph({
-    Title = "Flick Support",
-    Content = "Attempts to remove reload cooldown for Flick guns (client-side).",
+    Title = "Flick No‑Reload",
+    Content = "Removes reload / ammo limits on Flick guns (client-side). Requires an executor with getgc & table patch support.",
 })
 
 MiscTab:CreateToggle({
@@ -496,6 +522,24 @@ MiscTab:CreateToggle({
         MiscConfig.NoReload_Flick = Value
         playClick()
         print("[FrostHub DEBUG] NoReload_Flick:", MiscConfig.NoReload_Flick)
+    end,
+})
+
+-- Button to force a manual rescan (for debugging)
+MiscTab:CreateButton({
+    Name = "Rescan Flick Guns (Debug)",
+    Callback = function()
+        playClick()
+        print("[FrostHub DEBUG] Manual Flick gun rescan requested from UI...")
+        if getgc then
+            pcall(function()
+                -- force immediate rescan
+                FlickGuns = {}
+                scanFlickGuns()
+            end)
+        else
+            print("[FrostHub DEBUG] getgc not present in this executor. No‑Reload cannot hook Flick guns.")
+        end
     end,
 })
 
@@ -557,7 +601,7 @@ local function isVisible(fromPos, targetPart, ignoreList)
 end
 
 ------------------------------------------------------
--- ESP LOGIC
+-- ESP LOGIC (Optimized)
 ------------------------------------------------------
 local ESPObjects = {}
 
@@ -651,32 +695,91 @@ local function getBestTarget(camera)
 end
 
 ------------------------------------------------------
--- FLICK MISC: DIRECT GUN TABLE PATCHES (Flick)
+-- FLICK MISC: IMPROVED GUN PATCHES (Flick)
 ------------------------------------------------------
 
 -- We keep references to any gun-like tables we find via getgc
 local FlickGuns = {}
+local lastScanTime = 0
+local scanInterval = 8 -- seconds between automatic rescans
+
+-- helper to safely grab a field without exploding
+local function safeRawget(tbl, key)
+    local ok, result = pcall(rawget, tbl, key)
+    if ok then return result end
+    return nil
+end
+
+local function isGunTable(obj)
+    if type(obj) ~= "table" then return false end
+
+    -- Things we consider as signs of a gun table
+    local ammoLike = safeRawget(obj, "Ammo")
+        or safeRawget(obj, "CurrentAmmo")
+        or safeRawget(obj, "Mag")
+        or safeRawget(obj, "Clip")
+        or safeRawget(obj, "Bullets")
+        or safeRawget(obj, "AmmoInMag")
+
+    local reloadLike = safeRawget(obj, "ReloadTime")
+        or safeRawget(obj, "Reload")
+        or safeRawget(obj, "Reloading")
+
+    -- Sometimes Flick stores a Name or WeaponName
+    local nameLike = safeRawget(obj, "Name") or safeRawget(obj, "WeaponName")
+
+    return ammoLike ~= nil and reloadLike ~= nil and (nameLike ~= nil or true)
+end
 
 local function scanFlickGuns()
-    if not getgc then return end
+    if not getgc then
+        print("[FrostHub DEBUG] getgc not supported by this executor, Flick No‑Reload will not work.")
+        return
+    end
 
     FlickGuns = {}
 
     for _, obj in ipairs(getgc(true)) do
-        if type(obj) == "table" then
-            local hasAmmo = rawget(obj, "Ammo") or rawget(obj, "CurrentAmmo") or rawget(obj, "Mag")
-            local hasReloadTime = rawget(obj, "ReloadTime") or rawget(obj, "Reload")
-
-            if hasAmmo and hasReloadTime then
-                table.insert(FlickGuns, obj)
-            end
+        if isGunTable(obj) then
+            table.insert(FlickGuns, obj)
         end
     end
 
     print("[FrostHub DEBUG] Flick gun tables found:", #FlickGuns)
+    if #FlickGuns == 0 then
+        print("[FrostHub DEBUG] Hint: Equip a gun in Flick, then press 'Rescan Flick Guns (Debug)' in MISC.")
+    end
 end
 
 scanFlickGuns()
+
+local function patchGun(gun)
+    pcall(function()
+        -- Cache originals only once
+        if gun._FH_Patched then return end
+        gun._FH_Patched = true
+
+        gun._FH_Orig_A                   = safeRawget(gun, "Ammo")
+        gun._FH_Orig_CurrentAmmo         = safeRawget(gun, "CurrentAmmo")
+        gun._FH_Orig_Mag                 = safeRawget(gun, "Mag")
+        gun._FH_Orig_Clip                = safeRawget(gun, "Clip")
+        gun._FH_Orig_Bullets             = safeRawget(gun, "Bullets")
+        gun._FH_Orig_AmmoInMag           = safeRawget(gun, "AmmoInMag")
+
+        gun._FH_Orig_MaxAmmo             = safeRawget(gun, "MaxAmmo")
+        gun._FH_Orig_StoredAmmo          = safeRawget(gun, "StoredAmmo")
+
+        gun._FH_Orig_ReloadTime          = safeRawget(gun, "ReloadTime")
+        gun._FH_Orig_Reload              = safeRawget(gun, "Reload")
+        gun._FH_Orig_Reloading           = safeRawget(gun, "Reloading")
+        gun._FH_Orig_CanReload           = safeRawget(gun, "CanReload")
+
+        gun._FH_Orig_FireRate            = safeRawget(gun, "FireRate")
+        gun._FH_Orig_ShotsPerTap         = safeRawget(gun, "ShotsPerTap")
+
+        print("[FrostHub DEBUG] Patched Flick gun table:", gun, gun.Name or gun.WeaponName or "[no name]")
+    end)
+end
 
 local function applyFlickPatches()
     if not MiscConfig.NoReload_Flick then return end
@@ -684,23 +787,48 @@ local function applyFlickPatches()
 
     for _, gun in ipairs(FlickGuns) do
         pcall(function()
-            -- Cache original
-            gun._FH_OrigAmmo       = gun._FH_OrigAmmo       or gun.Ammo or gun.CurrentAmmo or gun.Mag
-            gun._FH_OrigReloadTime = gun._FH_OrigReloadTime or gun.ReloadTime or gun.Reload
+            patchGun(gun)
 
-            -- Force reload time to zero
+            -- Figure out a "mag size" to keep ammo topped up
+            local magSize =
+                safeRawget(gun, "MaxAmmo") or
+                safeRawget(gun, "Clip") or
+                safeRawget(gun, "Mag") or
+                safeRawget(gun, "AmmoInMag") or
+                safeRawget(gun, "Ammo") or
+                30
+
+            -- Kill reload time / flags
             if gun.ReloadTime ~= nil then gun.ReloadTime = 0 end
-            if gun.Reload ~= nil and type(gun.Reload) == "number" then gun.Reload = 0 end
+            if type(gun.Reload) == "number" then gun.Reload = 0 end
+            if type(gun.Reload) == "function" then
+                -- Replace function with dummy that instantly "finishes" reload
+                gun.Reload = function(...)
+                    if gun.Reloading ~= nil then gun.Reloading = false end
+                    if gun.CanReload ~= nil then gun.CanReload = true end
+                    -- keep ammo topped during any forced reload
+                    if gun.Ammo ~= nil and gun.Ammo < magSize then gun.Ammo = magSize end
+                    if gun.CurrentAmmo ~= nil and gun.CurrentAmmo < magSize then gun.CurrentAmmo = magSize end
+                    if gun.Mag ~= nil and gun.Mag < magSize then gun.Mag = magSize end
+                    if gun.Clip ~= nil and gun.Clip < magSize then gun.Clip = magSize end
+                    if gun.AmmoInMag ~= nil and gun.AmmoInMag < magSize then gun.AmmoInMag = magSize end
+                end
+            end
 
-            -- Force state flags so gun thinks it can shoot
             if gun.Reloading ~= nil then gun.Reloading = false end
             if gun.CanReload ~= nil then gun.CanReload = true end
 
-            -- Try to keep current ammo at least at mag size so game never triggers reload
-            local magSize = gun._FH_OrigAmmo or 30
+            -- Force ammo
             if gun.Ammo ~= nil and gun.Ammo < magSize then gun.Ammo = magSize end
             if gun.CurrentAmmo ~= nil and gun.CurrentAmmo < magSize then gun.CurrentAmmo = magSize end
             if gun.Mag ~= nil and gun.Mag < magSize then gun.Mag = magSize end
+            if gun.Clip ~= nil and gun.Clip < magSize then gun.Clip = magSize end
+            if gun.AmmoInMag ~= nil and gun.AmmoInMag < magSize then gun.AmmoInMag = magSize end
+            if gun.Bullets ~= nil and gun.Bullets < magSize then gun.Bullets = magSize end
+
+            -- If there is stored ammo logic, keep it high too
+            if gun.MaxAmmo ~= nil and gun.MaxAmmo < 9999 then gun.MaxAmmo = 9999 end
+            if gun.StoredAmmo ~= nil and gun.StoredAmmo < 9999 then gun.StoredAmmo = 9999 end
         end)
     end
 end
@@ -760,7 +888,7 @@ RunService.RenderStepped:Connect(function()
     --------------------------------------------------
     -- Sticky Aim (mouse pull near crosshair)
     --------------------------------------------------
-    if AimbotConfig.Enabled and AimbotConfig.StickyAim then
+    if AimbotConfig.Enabled and AimbotConfig.StickyAim and mousemoverel then
         if (AimbotConfig.HoldToAim and holdingKey) or (not AimbotConfig.HoldToAim and toggleAimingActive) then
             local mousePos = UserInputService:GetMouseLocation()
             local closest, closestDist
@@ -785,7 +913,7 @@ RunService.RenderStepped:Connect(function()
                 end
             end
 
-            if closest and mousemoverel then
+            if closest then
                 local diffVec = Vector2.new(closest.X, closest.Y) - mousePos
                 local moveX = diffVec.X * AimbotConfig.StickyStrength
                 local moveY = diffVec.Y * AimbotConfig.StickyStrength
@@ -848,16 +976,24 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- Apply Flick patches every frame while toggle on
+    -- Apply Flick patches periodically while toggle on
     --------------------------------------------------
     if MiscConfig.NoReload_Flick then
+        if now - lastScanTime > scanInterval then
+            lastScanTime = now
+            scanFlickGuns()
+        end
         applyFlickPatches()
     end
 
     --------------------------------------------------
-    -- ESP update
+    -- ESP update (optimized)
     --------------------------------------------------
     if Drawing and ESPConfig.Enabled then
+        local showBoxes = ESPConfig.ShowBoxes
+        local showNames = ESPConfig.ShowNames
+        local teamCheck = ESPConfig.TeamCheck and LocalPlayer.Team ~= nil
+
         for plr, data in pairs(ESPObjects) do
             local char = plr.Character
             local hum  = char and char:FindFirstChildOfClass("Humanoid")
@@ -869,7 +1005,7 @@ RunService.RenderStepped:Connect(function()
                 continue
             end
 
-            if ESPConfig.TeamCheck and LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
+            if teamCheck and plr.Team and LocalPlayer.Team == plr.Team then
                 if data.Box  then data.Box.Visible  = false end
                 if data.Name then data.Name.Visible = false end
                 continue
@@ -892,23 +1028,28 @@ RunService.RenderStepped:Connect(function()
             local height = math.abs(topPos.Y - bottomPos.Y)
             local width  = height / 2
 
-            if data.Box and ESPConfig.ShowBoxes then
-                data.Box.Size     = Vector2.new(width, height)
-                data.Box.Position = Vector2.new(rootPos.X - width / 2, topPos.Y)
-                data.Box.Visible  = true
-            elseif data.Box then
-                data.Box.Visible = false
+            if data.Box then
+                if showBoxes then
+                    data.Box.Size     = Vector2.new(width, height)
+                    data.Box.Position = Vector2.new(rootPos.X - width / 2, topPos.Y)
+                    data.Box.Visible  = true
+                else
+                    data.Box.Visible = false
+                end
             end
 
-            if data.Name and ESPConfig.ShowNames then
-                data.Name.Text     = plr.Name
-                data.Name.Position = Vector2.new(rootPos.X, topPos.Y - 18)
-                data.Name.Visible  = true
-            elseif data.Name then
-                data.Name.Visible = false
+            if data.Name then
+                if showNames then
+                    data.Name.Text     = plr.Name
+                    data.Name.Position = Vector2.new(rootPos.X, topPos.Y - 18)
+                    data.Name.Visible  = true
+                else
+                    data.Name.Visible = false
+                end
             end
         end
     elseif Drawing then
+        -- If ESP disabled, hide everything without deleting
         for _, data in pairs(ESPObjects) do
             if data.Box  then data.Box.Visible  = false end
             if data.Name then data.Name.Visible = false end
