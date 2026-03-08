@@ -34,35 +34,35 @@ end
 -- AIMBOT / ESP / NOCLIP CONFIG
 ------------------------------------------------------
 local AimbotConfig = {
-    Enabled            = false,
-    FOVRadius          = 140,   -- tighter default FOV for more precision
-    Smoothing          = 0.55,  -- 0.02–1 (mapped from slider)
-    TargetPart         = "Head", -- "Head" or "HumanoidRootPart"
-    BindKey            = Enum.KeyCode.E,
-    HoldToAim          = true,  -- true = hold, false = toggle
-    DynamicFOV         = true,
-    MaxDistance        = 800,
-    VisibleCheck       = true,  -- line-of-sight check
+    Enabled             = false,
+    FOVRadius           = 160,   -- a bit larger for easier locking (was 140)
+    Smoothing           = 0.65,  -- slightly faster default
+    TargetPart          = "Head", -- "Head" or "HumanoidRootPart"
+    BindKey             = Enum.KeyCode.E,
+    HoldToAim           = true,  -- true = hold, false = toggle
+    DynamicFOV          = true,
+    MaxDistance         = 900,
+    VisibleCheck        = true,  -- line-of-sight check
 
     -- Rage/legit behavior
-    InstantFlick       = false, -- rage-style instant snap
-    AutoShoot          = false, -- autoshoot when target visible
-    AutoShootWhileKey  = true,  -- if true, only autoshoot while aim key is active
+    InstantFlick        = false, -- rage-style instant snap
+    AutoShoot           = false, -- autoshoot when target visible
+    AutoShootWhileKey   = true,  -- if true, only autoshoot while aim key is active
 
-    -- NEW: Prediction & priority
-    Prediction         = false,
-    PredictionMultiplier = 1.0, -- how much velocity to lead by
+    -- Prediction & priority
+    Prediction          = true,
+    PredictionMultiplier = 1.0,   -- how much velocity to lead by
 
-    PriorityMode       = "Crosshair", -- "Crosshair" or "Distance"
-    StickyTarget       = false,       -- try to keep same target instead of switching
+    PriorityMode        = "Crosshair", -- "Crosshair" or "Distance"
+    StickyTarget        = true,        -- keep same target when possible
 
-    -- NEW: Triggerbot
-    Triggerbot         = false,
-    TriggerbotDelayMs  = 80,          -- 0–300 ms
+    -- Triggerbot
+    Triggerbot          = false,
+    TriggerbotDelayMs   = 80,          -- 0–300 ms
 }
 
-local holdingKey          = false  -- HOLD mode state
-local toggleAimingActive  = false  -- TOGGLE mode state
+local holdingKey         = false  -- HOLD mode state
+local toggleAimingActive = false  -- TOGGLE mode state
 
 print("[FrostHub DEBUG] Initial AimbotConfig:",
     "Enabled=", AimbotConfig.Enabled,
@@ -199,7 +199,7 @@ AimbotTab:CreateSlider({
 -- 6) Max distance slider
 AimbotTab:CreateSlider({
     Name = "Max Distance",
-    Range = {100, 2000},
+    Range = {100, 2500},
     Increment = 50,
     CurrentValue = AimbotConfig.MaxDistance,
     Flag = "Frost_MaxDistance",
@@ -221,7 +221,7 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 8) Visible check toggle (for more legit & precise targeting)
+-- 8) Visible check toggle
 AimbotTab:CreateToggle({
     Name = "Visible Check (line of sight)",
     CurrentValue = AimbotConfig.VisibleCheck,
@@ -506,7 +506,7 @@ local function getTargetPart(plr)
         return part
     end
 
-    -- Fallbacks to keep aimbot working if game has no HRP or custom rig
+    -- Fallbacks
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if hrp and hrp:IsA("BasePart") then
         return hrp
@@ -603,14 +603,14 @@ local function getBestTarget(camera)
                             effectiveFOV = effectiveFOV * scale
                         end
 
-                        if crosshairDist <= effectiveFOV then
+                        if crosshairDist <= effectiveFOV * 1.05 then -- slight margin
                             if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
                                 local score
                                 if AimbotConfig.PriorityMode == "Distance" then
                                     score = dist3D
                                 else
-                                    -- default: Crosshair priority + slight distance weight
-                                    score = crosshairDist + (dist3D * 0.02)
+                                    -- Crosshair priority + slight distance weight
+                                    score = crosshairDist + (dist3D * 0.015)
                                 end
 
                                 if score < bestScore then
@@ -686,9 +686,8 @@ Players.PlayerRemoving:Connect(removeESPForPlayer)
 ------------------------------------------------------
 -- MAIN RENDERSTEPPED LOOP (AIMBOT, TRIGGERBOT, AUTOSHOOT, NOCLIP, ESP)
 ------------------------------------------------------
-local lastFrameTime  = tick()
-local autoshootDown  = false
-local triggerDown    = false
+local lastFrameTime   = tick()
+local autoshootDown   = false
 local lastTriggerTime = 0
 
 RunService.RenderStepped:Connect(function()
@@ -707,27 +706,28 @@ RunService.RenderStepped:Connect(function()
         shouldAim = toggleAimingActive
     end
 
-    local currentTarget
+    local currentTargetPart
+    local currentTargetPlayer
 
     --------------------------------------------------
     -- Aimbot aiming (legit or instant flick) with optional prediction
     --------------------------------------------------
     if AimbotConfig.Enabled and shouldAim then
-        local targetPlayer = getBestTarget(camera)
-        if targetPlayer and targetPlayer.Character then
-            local part = getTargetPart(targetPlayer)
+        currentTargetPlayer = getBestTarget(camera)
+        if currentTargetPlayer and currentTargetPlayer.Character then
+            local part = getTargetPart(currentTargetPlayer)
             if part then
-                currentTarget = part
+                currentTargetPart = part
 
                 local targetPos = part.Position
 
-                -- Simple velocity-based prediction
+                -- Simple velocity-based prediction with fixed time ahead
                 if AimbotConfig.Prediction then
-                    local root = targetPlayer.Character:FindFirstChild("HumanoidRootPart") or part
+                    local root = currentTargetPlayer.Character:FindFirstChild("HumanoidRootPart") or part
                     if root and root:IsA("BasePart") then
                         local vel = root.Velocity
-                        local lead = vel * (AimbotConfig.PredictionMultiplier or 1) * (dt * 2)
-                        targetPos = targetPos + lead
+                        local leadTime = 0.12 * (AimbotConfig.PredictionMultiplier or 1) -- ~120ms lead
+                        targetPos = targetPos + (vel * leadTime)
                     end
                 end
 
@@ -757,16 +757,12 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- Autoshoot (when target in FOV & visible)
+    -- Autoshoot (uses current target)
     --------------------------------------------------
     local canAutoshoot = false
-    if AimbotConfig.AutoShoot and (not AimbotConfig.AutoShootWhileKey or shouldAim) then
-        local tPlayer = getBestTarget(camera)
-        if tPlayer and tPlayer.Character then
-            local tPart = getTargetPart(tPlayer)
-            if tPart and isVisible(camera.CFrame.Position, tPart, {LocalPlayer.Character, camera}) then
-                canAutoshoot = true
-            end
+    if AimbotConfig.AutoShoot and (not AimbotConfig.AutoShootWhileKey or shouldAim) and currentTargetPlayer and currentTargetPart then
+        if isVisible(camera.CFrame.Position, currentTargetPart, {LocalPlayer.Character, camera}) then
+            canAutoshoot = true
         end
     end
 
@@ -783,42 +779,29 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- Triggerbot (fires when crosshair is over target, with delay)
+    -- Triggerbot (uses current target, with delay)
     --------------------------------------------------
-    local canTrigger = false
-    local delaySec = (AimbotConfig.TriggerbotDelayMs or 0) / 1000
+    if AimbotConfig.Triggerbot and mouse1press and mouse1release and currentTargetPlayer and currentTargetPart then
+        if isVisible(camera.CFrame.Position, currentTargetPart, {LocalPlayer.Character, camera}) then
+            local mouseLoc = UserInputService:GetMouseLocation()
+            local mousePos = Vector2.new(mouseLoc.X, mouseLoc.Y)
+            local screenPos, onScreen = camera:WorldToViewportPoint(currentTargetPart.Position)
 
-    if AimbotConfig.Triggerbot and mouse1press and mouse1release then
-        local tPlayer = getBestTarget(camera)
-        if tPlayer and tPlayer.Character then
-            local tPart = getTargetPart(tPlayer)
-            if tPart and isVisible(camera.CFrame.Position, tPart, {LocalPlayer.Character, camera}) then
-                -- Only trigger if crosshair is quite close to target
-                local mouseLoc = UserInputService:GetMouseLocation()
-                local mousePos = Vector2.new(mouseLoc.X, mouseLoc.Y)
-                local screenPos, onScreen = camera:WorldToViewportPoint(tPart.Position)
-                if onScreen and screenPos.Z > 0 then
-                    local target2D = Vector2.new(screenPos.X, screenPos.Y)
-                    local distToCross = (mousePos - target2D).Magnitude
+            if onScreen and screenPos.Z > 0 then
+                local target2D = Vector2.new(screenPos.X, screenPos.Y)
+                local distToCross = (mousePos - target2D).Magnitude
 
-                    -- smaller than FOV * 0.4 to require tighter alignment
-                    local maxTriggerRadius = (AimbotConfig.FOVRadius or 140) * 0.4
-                    if distToCross <= maxTriggerRadius then
-                        canTrigger = true
+                -- smaller radius = more legit; larger if you want more hits
+                local maxTriggerRadius = (AimbotConfig.FOVRadius or 160) * 0.35
+
+                if distToCross <= maxTriggerRadius then
+                    local delaySec = (AimbotConfig.TriggerbotDelayMs or 0) / 1000
+                    if now - lastTriggerTime >= delaySec then
+                        lastTriggerTime = now
+                        pcall(function() mouse1press() end)
+                        pcall(function() mouse1release() end)
                     end
                 end
-            end
-        end
-    end
-
-    if canTrigger then
-        if now - lastTriggerTime >= delaySec then
-            lastTriggerTime = now
-            if not triggerDown then
-                triggerDown = true
-                pcall(function() mouse1press() end)
-                pcall(function() mouse1release() end)
-                triggerDown = false
             end
         end
     end
