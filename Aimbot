@@ -34,24 +34,35 @@ end
 -- AIMBOT / ESP / NOCLIP CONFIG
 ------------------------------------------------------
 local AimbotConfig = {
-    Enabled = false,
-    FOVRadius = 140,      -- tighter default FOV for more precision (was 220)
-    Smoothing = 0.55,     -- slightly faster by default
-    TargetPart = "Head", -- "Head" or "HumanoidRootPart"
-    BindKey = Enum.KeyCode.E,
-    HoldToAim = true,     -- true = hold, false = toggle
-    DynamicFOV = true,
-    MaxDistance = 800,
-    VisibleCheck = true,  -- only target visible players (line-of-sight)
+    Enabled            = false,
+    FOVRadius          = 140,   -- tighter default FOV for more precision
+    Smoothing          = 0.55,  -- 0.02–1 (mapped from slider)
+    TargetPart         = "Head", -- "Head" or "HumanoidRootPart"
+    BindKey            = Enum.KeyCode.E,
+    HoldToAim          = true,  -- true = hold, false = toggle
+    DynamicFOV         = true,
+    MaxDistance        = 800,
+    VisibleCheck       = true,  -- line-of-sight check
 
-    -- NEW
-    InstantFlick = false,     -- rage-style instant snap
-    AutoShoot = false,        -- autoshoot when target visible
-    AutoShootWhileKey = true, -- if true, only autoshoot while aim key is active
+    -- Rage/legit behavior
+    InstantFlick       = false, -- rage-style instant snap
+    AutoShoot          = false, -- autoshoot when target visible
+    AutoShootWhileKey  = true,  -- if true, only autoshoot while aim key is active
+
+    -- NEW: Prediction & priority
+    Prediction         = false,
+    PredictionMultiplier = 1.0, -- how much velocity to lead by
+
+    PriorityMode       = "Crosshair", -- "Crosshair" or "Distance"
+    StickyTarget       = false,       -- try to keep same target instead of switching
+
+    -- NEW: Triggerbot
+    Triggerbot         = false,
+    TriggerbotDelayMs  = 80,          -- 0–300 ms
 }
 
-local holdingKey = false          -- HOLD mode state
-local toggleAimingActive = false  -- TOGGLE mode state
+local holdingKey          = false  -- HOLD mode state
+local toggleAimingActive  = false  -- TOGGLE mode state
 
 print("[FrostHub DEBUG] Initial AimbotConfig:",
     "Enabled=", AimbotConfig.Enabled,
@@ -61,10 +72,10 @@ print("[FrostHub DEBUG] Initial AimbotConfig:",
 )
 
 local ESPConfig = {
-    Enabled = false,
-    TeamCheck = false,
-    ShowNames = true,
-    ShowBoxes = true,
+    Enabled    = false,
+    TeamCheck  = false,
+    ShowNames  = true,
+    ShowBoxes  = true,
 }
 
 local NoclipConfig = {
@@ -72,7 +83,7 @@ local NoclipConfig = {
 }
 
 -- executor mouse functions (optional)
-local mouse1press = mouse1press or (syn and syn.mouse1press) or nil
+local mouse1press   = mouse1press   or (syn and syn.mouse1press)   or nil
 local mouse1release = mouse1release or (syn and syn.mouse1release) or nil
 
 ------------------------------------------------------
@@ -141,7 +152,7 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 3) Target Part dropdown (fixed logic)
+-- 3) Target Part dropdown
 AimbotTab:CreateDropdown({
     Name = "Target Part",
     Options = {"Head", "HumanoidRootPart"},
@@ -171,10 +182,10 @@ AimbotTab:CreateSlider({
     end,
 })
 
--- 5) Smoothing slider (0.02–1)
+-- 5) Smoothing slider (0.02–1) via 2–100 mapping
 AimbotTab:CreateSlider({
     Name = "Smoothing (speed)",
-    Range = {2, 100}, -- we will map 2–100 to 0.02–1 internally
+    Range = {2, 100}, -- map 2–100 to 0.02–1 internally
     Increment = 1,
     CurrentValue = math.floor(AimbotConfig.Smoothing * 100),
     Flag = "Frost_Smoothing",
@@ -257,7 +268,92 @@ AimbotTab:CreateToggle({
     end,
 })
 
--- 11) Bind key info + change button (manual listener)
+------------------------------------------------------
+-- EXTRA AIM FEATURES
+------------------------------------------------------
+
+-- 11) Prediction toggle
+AimbotTab:CreateToggle({
+    Name = "Prediction (lead targets)",
+    CurrentValue = AimbotConfig.Prediction,
+    Flag = "Frost_Prediction",
+    Callback = function(Value)
+        AimbotConfig.Prediction = Value
+        playClick()
+        print("[FrostHub DEBUG] Prediction:", AimbotConfig.Prediction)
+    end,
+})
+
+-- 12) Prediction multiplier slider
+AimbotTab:CreateSlider({
+    Name = "Prediction Multiplier",
+    Range = {0, 300},  -- 0.0–3.0
+    Increment = 5,
+    CurrentValue = math.floor((AimbotConfig.PredictionMultiplier or 1) * 100),
+    Flag = "Frost_PredictionMultiplier",
+    Callback = function(Value)
+        local mult = math.clamp(Value / 100, 0, 3)
+        AimbotConfig.PredictionMultiplier = mult
+        print("[FrostHub DEBUG] PredictionMultiplier:", AimbotConfig.PredictionMultiplier)
+    end,
+})
+
+-- 13) Aim priority
+AimbotTab:CreateDropdown({
+    Name = "Aim Priority",
+    Options = {"Crosshair", "Distance"},
+    CurrentOption = AimbotConfig.PriorityMode,
+    Flag = "Frost_AimPriority",
+    Callback = function(Option)
+        if Option ~= "Crosshair" and Option ~= "Distance" then
+            Option = "Crosshair"
+        end
+        AimbotConfig.PriorityMode = Option
+        playClick()
+        print("[FrostHub DEBUG] PriorityMode:", AimbotConfig.PriorityMode)
+    end,
+})
+
+-- 14) Sticky target toggle
+AimbotTab:CreateToggle({
+    Name = "Sticky Target (less switching)",
+    CurrentValue = AimbotConfig.StickyTarget,
+    Flag = "Frost_StickyTarget",
+    Callback = function(Value)
+        AimbotConfig.StickyTarget = Value
+        playClick()
+        print("[FrostHub DEBUG] StickyTarget:", AimbotConfig.StickyTarget)
+    end,
+})
+
+-- 15) Triggerbot + delay
+AimbotTab:CreateToggle({
+    Name = "Triggerbot Enabled",
+    CurrentValue = AimbotConfig.Triggerbot,
+    Flag = "Frost_Triggerbot",
+    Callback = function(Value)
+        AimbotConfig.Triggerbot = Value
+        playClick()
+        print("[FrostHub DEBUG] Triggerbot:", AimbotConfig.Triggerbot)
+    end,
+})
+
+AimbotTab:CreateSlider({
+    Name = "Triggerbot Delay (ms)",
+    Range = {0, 300},
+    Increment = 10,
+    CurrentValue = AimbotConfig.TriggerbotDelayMs,
+    Flag = "Frost_TriggerbotDelay",
+    Callback = function(Value)
+        AimbotConfig.TriggerbotDelayMs = Value
+        print("[FrostHub DEBUG] TriggerbotDelayMs:", AimbotConfig.TriggerbotDelayMs)
+    end,
+})
+
+------------------------------------------------------
+-- BIND KEY UI
+------------------------------------------------------
+
 AimbotTab:CreateParagraph({
     Title = "Bind Key",
     Content = "Current bind: " .. AimbotConfig.BindKey.Name .. " (HOLD or TOGGLE depending on mode above). Click 'Change Bind' below and then press any key.",
@@ -309,7 +405,7 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
 end)
 
 ------------------------------------------------------
--- ESP TAB
+-- ESP TAB (ONLY ESP FEATURES HERE)
 ------------------------------------------------------
 local ESPTab = Window:CreateTab("ESP", 4483362458)
 ESPTab:CreateSection("ESP Settings")
@@ -445,14 +541,46 @@ local function isVisible(fromPos, targetPart, ignoreList)
     return result.Instance:IsDescendantOf(targetPart.Parent)
 end
 
--- Better target selection
-local function getBestTarget()
-    local camera = Workspace.CurrentCamera
+-- Cached sticky target
+local stickyTargetPlayer = nil
+
+-- Better target selection with priority + sticky
+local function getBestTarget(camera)
+    camera = camera or Workspace.CurrentCamera
     if not camera then return nil end
 
     local mouseLoc = UserInputService:GetMouseLocation()
     local mousePos = Vector2.new(mouseLoc.X, mouseLoc.Y)
 
+    -- 1) If sticky target is enabled and still valid, keep it
+    if AimbotConfig.StickyTarget and stickyTargetPlayer and isAlive(stickyTargetPlayer) then
+        local part = getTargetPart(stickyTargetPlayer)
+        if part then
+            local worldPos = part.Position
+            local dist3D = (worldPos - camera.CFrame.Position).Magnitude
+            if dist3D <= AimbotConfig.MaxDistance then
+                local screenPos, onScreen = camera:WorldToViewportPoint(worldPos)
+                if onScreen and screenPos.Z > 0 then
+                    local target2D = Vector2.new(screenPos.X, screenPos.Y)
+                    local crosshairDist = (mousePos - target2D).Magnitude
+
+                    local effectiveFOV = AimbotConfig.FOVRadius
+                    if AimbotConfig.DynamicFOV then
+                        local scale = math.clamp(1 - (dist3D / (AimbotConfig.MaxDistance * 1.5)), 0.4, 1)
+                        effectiveFOV = effectiveFOV * scale
+                    end
+
+                    if crosshairDist <= effectiveFOV then
+                        if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
+                            return stickyTargetPlayer
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2) Normal search
     local bestPlayer
     local bestScore = math.huge
 
@@ -476,9 +604,15 @@ local function getBestTarget()
                         end
 
                         if crosshairDist <= effectiveFOV then
-                            -- line-of-sight check for more legit + precise targeting
                             if isVisible(camera.CFrame.Position, part, {LocalPlayer.Character, camera}) then
-                                local score = crosshairDist + (dist3D * 0.02)
+                                local score
+                                if AimbotConfig.PriorityMode == "Distance" then
+                                    score = dist3D
+                                else
+                                    -- default: Crosshair priority + slight distance weight
+                                    score = crosshairDist + (dist3D * 0.02)
+                                end
+
                                 if score < bestScore then
                                     bestScore = score
                                     bestPlayer = plr
@@ -489,6 +623,12 @@ local function getBestTarget()
                 end
             end
         end
+    end
+
+    if AimbotConfig.StickyTarget then
+        stickyTargetPlayer = bestPlayer
+    else
+        stickyTargetPlayer = nil
     end
 
     return bestPlayer
@@ -544,14 +684,16 @@ Players.PlayerAdded:Connect(createESPForPlayer)
 Players.PlayerRemoving:Connect(removeESPForPlayer)
 
 ------------------------------------------------------
--- MAIN RENDERSTEPPED LOOP
+-- MAIN RENDERSTEPPED LOOP (AIMBOT, TRIGGERBOT, AUTOSHOOT, NOCLIP, ESP)
 ------------------------------------------------------
-local lastFrameTime = tick()
-local autoshootDown = false
+local lastFrameTime  = tick()
+local autoshootDown  = false
+local triggerDown    = false
+local lastTriggerTime = 0
 
 RunService.RenderStepped:Connect(function()
     local now = tick()
-    local dt = now - lastFrameTime
+    local dt  = now - lastFrameTime
     lastFrameTime = now
 
     local camera = Workspace.CurrentCamera
@@ -568,16 +710,27 @@ RunService.RenderStepped:Connect(function()
     local currentTarget
 
     --------------------------------------------------
-    -- Aimbot aiming (legit or instant flick)
+    -- Aimbot aiming (legit or instant flick) with optional prediction
     --------------------------------------------------
     if AimbotConfig.Enabled and shouldAim then
-        local targetPlayer = getBestTarget()
+        local targetPlayer = getBestTarget(camera)
         if targetPlayer and targetPlayer.Character then
             local part = getTargetPart(targetPlayer)
             if part then
                 currentTarget = part
 
                 local targetPos = part.Position
+
+                -- Simple velocity-based prediction
+                if AimbotConfig.Prediction then
+                    local root = targetPlayer.Character:FindFirstChild("HumanoidRootPart") or part
+                    if root and root:IsA("BasePart") then
+                        local vel = root.Velocity
+                        local lead = vel * (AimbotConfig.PredictionMultiplier or 1) * (dt * 2)
+                        targetPos = targetPos + lead
+                    end
+                end
+
                 local camCF = camera.CFrame
                 local camPos = camCF.Position
                 local toTarget = (targetPos - camPos)
@@ -608,7 +761,7 @@ RunService.RenderStepped:Connect(function()
     --------------------------------------------------
     local canAutoshoot = false
     if AimbotConfig.AutoShoot and (not AimbotConfig.AutoShootWhileKey or shouldAim) then
-        local tPlayer = getBestTarget()
+        local tPlayer = getBestTarget(camera)
         if tPlayer and tPlayer.Character then
             local tPart = getTargetPart(tPlayer)
             if tPart and isVisible(camera.CFrame.Position, tPart, {LocalPlayer.Character, camera}) then
@@ -630,6 +783,47 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
+    -- Triggerbot (fires when crosshair is over target, with delay)
+    --------------------------------------------------
+    local canTrigger = false
+    local delaySec = (AimbotConfig.TriggerbotDelayMs or 0) / 1000
+
+    if AimbotConfig.Triggerbot and mouse1press and mouse1release then
+        local tPlayer = getBestTarget(camera)
+        if tPlayer and tPlayer.Character then
+            local tPart = getTargetPart(tPlayer)
+            if tPart and isVisible(camera.CFrame.Position, tPart, {LocalPlayer.Character, camera}) then
+                -- Only trigger if crosshair is quite close to target
+                local mouseLoc = UserInputService:GetMouseLocation()
+                local mousePos = Vector2.new(mouseLoc.X, mouseLoc.Y)
+                local screenPos, onScreen = camera:WorldToViewportPoint(tPart.Position)
+                if onScreen and screenPos.Z > 0 then
+                    local target2D = Vector2.new(screenPos.X, screenPos.Y)
+                    local distToCross = (mousePos - target2D).Magnitude
+
+                    -- smaller than FOV * 0.4 to require tighter alignment
+                    local maxTriggerRadius = (AimbotConfig.FOVRadius or 140) * 0.4
+                    if distToCross <= maxTriggerRadius then
+                        canTrigger = true
+                    end
+                end
+            end
+        end
+    end
+
+    if canTrigger then
+        if now - lastTriggerTime >= delaySec then
+            lastTriggerTime = now
+            if not triggerDown then
+                triggerDown = true
+                pcall(function() mouse1press() end)
+                pcall(function() mouse1release() end)
+                triggerDown = false
+            end
+        end
+    end
+
+    --------------------------------------------------
     -- Noclip logic
     --------------------------------------------------
     if NoclipConfig.Enabled and LocalPlayer.Character then
@@ -642,61 +836,62 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- ESP update
+    -- ESP update (ONLY ESP visuals)
     --------------------------------------------------
     if Drawing and ESPConfig.Enabled then
         for plr, data in pairs(ESPObjects) do
             local char = plr.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
 
             if not (char and hum and hrp and hum.Health > 0) then
-                if data.Box then data.Box.Visible = false end
+                if data.Box  then data.Box.Visible  = false end
                 if data.Name then data.Name.Visible = false end
                 continue
             end
 
             if ESPConfig.TeamCheck and LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
-                if data.Box then data.Box.Visible = false end
+                if data.Box  then data.Box.Visible  = false end
                 if data.Name then data.Name.Visible = false end
                 continue
             end
 
             local rootPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
             if not onScreen or rootPos.Z < 0 then
-                if data.Box then data.Box.Visible = false end
+                if data.Box  then data.Box.Visible  = false end
                 if data.Name then data.Name.Visible = false end
                 continue
             end
 
             local head = char:FindFirstChild("Head")
-            local leg = char:FindFirstChild("Left Leg") or char:FindFirstChild("LeftLowerLeg") or char:FindFirstChild("LeftFoot")
+            local leg  = char:FindFirstChild("Left Leg") or char:FindFirstChild("LeftLowerLeg") or char:FindFirstChild("LeftFoot")
 
-            local topPos = head and camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0)) or rootPos
-            local bottomPos = leg and camera:WorldToViewportPoint(leg.Position - Vector3.new(0, 0.5, 0)) or camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
+            local topPos    = head and camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0)) or rootPos
+            local bottomPos = leg and camera:WorldToViewportPoint(leg.Position - Vector3.new(0, 0.5, 0))
+                or camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
 
             local height = math.abs(topPos.Y - bottomPos.Y)
-            local width = height / 2
+            local width  = height / 2
 
             if data.Box and ESPConfig.ShowBoxes then
-                data.Box.Size = Vector2.new(width, height)
+                data.Box.Size     = Vector2.new(width, height)
                 data.Box.Position = Vector2.new(rootPos.X - width / 2, topPos.Y)
-                data.Box.Visible = true
+                data.Box.Visible  = true
             elseif data.Box then
                 data.Box.Visible = false
             end
 
             if data.Name and ESPConfig.ShowNames then
-                data.Name.Text = plr.Name
+                data.Name.Text     = plr.Name
                 data.Name.Position = Vector2.new(rootPos.X, topPos.Y - 18)
-                data.Name.Visible = true
+                data.Name.Visible  = true
             elseif data.Name then
                 data.Name.Visible = false
             end
         end
     elseif Drawing then
         for _, data in pairs(ESPObjects) do
-            if data.Box then data.Box.Visible = false end
+            if data.Box  then data.Box.Visible  = false end
             if data.Name then data.Name.Visible = false end
         end
     end
@@ -708,9 +903,9 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "Frost Hub (DEBUG)",
-        Text = "Loaded Aimbot (rage+autoshoot) + ESP + Noclip (aim bind: " .. AimbotConfig.BindKey.Name .. ")",
+        Text = "Loaded Aimbot (rage+autoshoot+trigger) + ESP + Noclip (aim bind: " .. AimbotConfig.BindKey.Name .. ")",
         Duration = 5,
     })
 end)
 
-print("[FrostHub DEBUG] Initialization complete (Rayfield UI with Aimbot, Rage Flicks, Autoshoot, ESP, Noclip).")
+print("[FrostHub DEBUG] Initialization complete (Rayfield UI with Aimbot, Rage Flicks, Autoshoot, Triggerbot, ESP, Noclip).")
