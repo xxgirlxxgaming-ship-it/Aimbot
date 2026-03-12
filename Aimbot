@@ -84,15 +84,17 @@ local AimbotConfig = {
     RCSStrength       = 0.25,
 }
 
+-- old internal ESP config no longer used for drawing, but kept for team checks etc.
 local ESPConfig = {
-    Enabled    = false,
+    Enabled    = false,  -- will not drive Drawing-ESP now
     TeamCheck  = false,
     ShowNames  = true,
     ShowBoxes  = true,
 }
 
 local MiscConfig = {
-    NoReload_Flick = false,
+    NoReload_Flick     = false,
+    InfiniteYield_Once = false, -- track if Infinite Yield has been loaded
 }
 
 local holdingKey         = false
@@ -545,59 +547,60 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
 end)
 
 ------------------------------------------------------
--- ESP TAB (your layout, logic kept)
+-- ESP TAB (Dinas ESP ONLY)
 ------------------------------------------------------
 
 local ESPTab = Window:CreateTab("ESP", 4483362458)
-ESPTab:CreateSection("ESP Settings")
+ESPTab:CreateSection("Dinas Universal ESP")
 
 ESPTab:CreateParagraph({
-    Title = "Info",
-    Content = "Draws boxes and names on players (Drawing API). Disable ESP for max FPS.",
+    Title = "External ESP",
+    Content = "Uses Dinas Universal ESP script. Internal Drawing ESP has been replaced.",
 })
 
-ESPTab:CreateToggle({
-    Name = "Enable ESP",
-    CurrentValue = ESPConfig.Enabled,
-    Flag = "Frost_ESPEnabled",
-    Callback = function(Value)
-        ESPConfig.Enabled = Value
+-- track if we've loaded Dinas at least once
+local DinasESP_Loaded = false
+
+-- button: load / reload
+ESPTab:CreateButton({
+    Name = "Load / Reload Dinas ESP",
+    Callback = function()
         playClick()
+        pcall(function()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/rblxscriptsdotnet/roblox-scripts/refs/heads/main/Dinas%20Universal%20ESP", true))()
+            DinasESP_Loaded = true
+            print("[FrostHub DEBUG] Dinas Universal ESP loaded.")
+        end)
     end,
 })
 
-ESPTab:CreateToggle({
-    Name = "Team Check",
-    CurrentValue = ESPConfig.TeamCheck,
-    Flag = "Frost_ESPTeamCheck",
-    Callback = function(Value)
-        ESPConfig.TeamCheck = Value
+-- simple "refresh" button (just re-loads again)
+ESPTab:CreateButton({
+    Name = "Refresh ESP", 
+    Callback = function()
         playClick()
+        if DinasESP_Loaded then
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/rblxscriptsdotnet/roblox-scripts/refs/heads/main/Dinas%20Universal%20ESP", true))()
+                print("[FrostHub DEBUG] Dinas ESP refreshed.")
+            end)
+        else
+            pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/rblxscriptsdotnet/roblox-scripts/refs/heads/main/Dinas%20Universal%20ESP", true))()
+                DinasESP_Loaded = true
+                print("[FrostHub DEBUG] Dinas ESP loaded from refresh button.")
+            end)
+        end
     end,
 })
 
-ESPTab:CreateToggle({
-    Name = "Show Names",
-    CurrentValue = ESPConfig.ShowNames,
-    Flag = "Frost_ESPShowNames",
-    Callback = function(Value)
-        ESPConfig.ShowNames = Value
-        playClick()
-    end,
-})
-
-ESPTab:CreateToggle({
-    Name = "Show Boxes",
-    CurrentValue = ESPConfig.ShowBoxes,
-    Flag = "Frost_ESPShowBoxes",
-    Callback = function(Value)
-        ESPConfig.ShowBoxes = Value
-        playClick()
-    end,
+ESPTab:CreateParagraph({
+    Title = "Note",
+    Content = "Dinas ESP controls (colors, team check, etc.) are inside the Dinas script itself.",
 })
 
 ------------------------------------------------------
--- MISC TAB (Flick no‑reload)
+-- MISC TAB (Flick no‑reload + Infinite Yield toggle)
 ------------------------------------------------------
 
 local MiscTab = Window:CreateTab("MISC", 4483362458)
@@ -618,8 +621,46 @@ MiscTab:CreateToggle({
     end,
 })
 
+MiscTab:CreateButton({
+    Name = "Rescan Flick Guns (Debug)",
+    Callback = function()
+        playClick()
+        if getgc then
+            scanFlickGuns()
+        end
+    end,
+})
+
+MiscTab:CreateSection("Infinite Yield Admin")
+
+local InfiniteYield_Toggle
+
+InfiniteYield_Toggle = MiscTab:CreateToggle({
+    Name = "Load / Enable Infinite Yield",
+    CurrentValue = false,
+    Flag = "Frost_InfiniteYield",
+    Callback = function(Value)
+        playClick()
+        if Value then
+            -- load Infinite Yield once when toggled ON
+            if not MiscConfig.InfiniteYield_Once then
+                MiscConfig.InfiniteYield_Once = true
+                pcall(function()
+                    loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source', true))()
+                    print("[FrostHub DEBUG] Infinite Yield loaded via toggle.")
+                end)
+            else
+                print("[FrostHub DEBUG] Infinite Yield already loaded previously.")
+            end
+        else
+            -- cannot fully unload Infinite Yield; this just turns the toggle off visually
+            print("[FrostHub DEBUG] Infinite Yield toggle set to OFF (script remains loaded).")
+        end
+    end,
+})
+
 ------------------------------------------------------
--- FLICK GUN HOOKING (unchanged core, just kept)
+-- FLICK GUN HOOKING
 ------------------------------------------------------
 
 local FlickGuns = {}
@@ -649,7 +690,7 @@ local function isGunTable(obj)
     return ammoLike ~= nil and reloadLike ~= nil
 end
 
-local function scanFlickGuns()
+function scanFlickGuns()
     if not getgc then
         print("[FrostHub DEBUG] getgc not supported, Flick No‑Reload disabled.")
         return
@@ -705,16 +746,6 @@ local function applyFlickPatches()
         end)
     end
 end
-
-MiscTab:CreateButton({
-    Name = "Rescan Flick Guns (Debug)",
-    Callback = function()
-        playClick()
-        if getgc then
-            scanFlickGuns()
-        end
-    end,
-})
 
 ------------------------------------------------------
 -- CORE HELPERS (PLAYERS, VISIBILITY, BOX)
@@ -774,54 +805,10 @@ local function isVisible(fromPos, targetPart, ignoreList)
 end
 
 ------------------------------------------------------
--- ESP OBJECTS
+-- (OLD) ESP OBJECTS REMOVED - USING DINAS INSTEAD
 ------------------------------------------------------
-
-local ESPObjects = {}
-
-local function createESPForPlayer(plr)
-    if plr == LocalPlayer then return end
-
-    ESPObjects[plr] = ESPObjects[plr] or {}
-    local data = ESPObjects[plr]
-
-    if Drawing then
-        if not data.Box then
-            local box = Drawing.new("Square")
-            box.Color = Color3.fromRGB(0, 170, 255)
-            box.Thickness = 1.5
-            box.Filled = false
-            box.Visible = false
-            data.Box = box
-        end
-
-        if not data.Name then
-            local name = Drawing.new("Text")
-            name.Color = Color3.fromRGB(220, 235, 255)
-            name.Size = 16
-            name.Outline = true
-            name.Center = true
-            name.Visible = false
-            data.Name = name
-        end
-    end
-end
-
-local function removeESPForPlayer(plr)
-    local data = ESPObjects[plr]
-    if not data then return end
-
-    if data.Box then pcall(function() data.Box:Remove() end) end
-    if data.Name then pcall(function() data.Name:Remove() end) end
-    ESPObjects[plr] = nil
-end
-
-for _, plr in ipairs(Players:GetPlayers()) do
-    createESPForPlayer(plr)
-end
-
-Players.PlayerAdded:Connect(createESPForPlayer)
-Players.PlayerRemoving:Connect(removeESPForPlayer)
+-- Internal Drawing ESP code is removed/redundant because ESP is now handled
+-- entirely by the external Dinas Universal ESP script.
 
 ------------------------------------------------------
 -- TARGET SELECTION (FOV/Distance/Nearest)
@@ -831,9 +818,9 @@ local function getBestTarget(camera)
     local bestPlayer
     local bestScore = math.huge
 
-    local viewport    = camera.ViewportSize
+    local viewport     = camera.ViewportSize
     local screenCenter = Vector2.new(viewport.X / 2, viewport.Y / 2)
-    local camPos      = camera.CFrame.Position
+    local camPos       = camera.CFrame.Position
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and isAlive(plr) then
@@ -885,7 +872,7 @@ local function getBestTarget(camera)
 end
 
 ------------------------------------------------------
--- HELPER: get screen-space box for trigger/ESP
+-- HELPER: get screen-space box for trigger (still used)
 ------------------------------------------------------
 
 local function getScreenBox(camera, char)
@@ -914,7 +901,7 @@ local function getScreenBox(camera, char)
 end
 
 ------------------------------------------------------
--- MAIN LOOP (Aimbot, Magnet, Trigger, Autoshoot, Flick, ESP)
+-- MAIN LOOP (Aimbot, Magnet, Trigger, Autoshoot, Flick)
 ------------------------------------------------------
 
 local lastFrameTime   = tick()
@@ -1065,7 +1052,6 @@ RunService.RenderStepped:Connect(function()
 
     --------------------------------------------------
     -- TRIGGERBOT (classic crosshair trigger)
-    -- Fires when your crosshair is over an enemy body box or close to bone.
     --------------------------------------------------
     if AimbotConfig.Triggerbot and mouse1press and mouse1release then
         local active = true
@@ -1160,63 +1146,8 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- ESP UPDATE
+    -- ESP UPDATE -- SKIPPED (Dinas handles ESP)
     --------------------------------------------------
-    if Drawing and ESPConfig.Enabled then
-        local showBoxes = ESPConfig.ShowBoxes
-        local showNames = ESPConfig.ShowNames
-        local teamCheck = ESPConfig.TeamCheck and LocalPlayer.Team ~= nil
-
-        for plr, data in pairs(ESPObjects) do
-            local char = plr.Character
-            local hum  = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-
-            if not (char and hum and hrp and hum.Health > 0) then
-                if data.Box  then data.Box.Visible  = false end
-                if data.Name then data.Name.Visible = false end
-                continue
-            end
-
-            if teamCheck and plr.Team and LocalPlayer.Team == plr.Team then
-                if data.Box  then data.Box.Visible  = false end
-                if data.Name then data.Name.Visible = false end
-                continue
-            end
-
-            local box = getScreenBox(camera, char)
-            if not box then
-                if data.Box  then data.Box.Visible  = false end
-                if data.Name then data.Name.Visible = false end
-                continue
-            end
-
-            if data.Box then
-                if showBoxes then
-                    data.Box.Size     = Vector2.new(box.width, box.height)
-                    data.Box.Position = Vector2.new(box.center.X - box.width / 2, box.top.Y)
-                    data.Box.Visible  = true
-                else
-                    data.Box.Visible = false
-                end
-            end
-
-            if data.Name then
-                if showNames then
-                    data.Name.Text     = plr.Name
-                    data.Name.Position = Vector2.new(box.center.X, box.top.Y - 18)
-                    data.Name.Visible  = true
-                else
-                    data.Name.Visible = false
-                end
-            end
-        end
-    elseif Drawing then
-        for _, data in pairs(ESPObjects) do
-            if data.Box  then data.Box.Visible  = false end
-            if data.Name then data.Name.Visible = false end
-        end
-    end
 end)
 
 ------------------------------------------------------
@@ -1226,9 +1157,9 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "Frost Hub",
-        Text = "Loaded Aimbot / Magnet / Trigger / ESP / Flick (bind: " .. AimbotConfig.BindKey.Name .. ")",
+        Text = "Loaded Aimbot / Magnet / Trigger / Flick / ESP Controls (bind: " .. AimbotConfig.BindKey.Name .. ")",
         Duration = 5,
     })
 end)
 
-print("[FrostHub DEBUG] Init complete (Rage/Legit/Custom Aimbot, FOV, Magnet, Triggerbot, ESP, Flick No-Reload).")
+print("[FrostHub DEBUG] Init complete (Aimbot, Triggerbot, Magnet, Flick No-Reload, Dinas ESP controls, Infinite Yield toggle).")
