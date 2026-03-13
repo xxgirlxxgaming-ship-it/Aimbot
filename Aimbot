@@ -36,18 +36,15 @@ end
 -- AIMBOT / ESP / MISC CONFIG (REWORKED)
 ------------------------------------------------------
 
+-- Single, extremely precise (flick-capable) aimbot config
 local AimbotConfig = {
     Enabled           = false,
 
-    -- Main behavior mode
-    Mode              = "Custom", -- "Rage", "Legit", "Custom"
-
     -- Core aimbot
-    MaxDistance       = 1600,
-    FOVRadius         = 180,      -- in pixels around crosshair
-    Smoothing         = 0.35,     -- 0–1 (lower = snappier); used for legit
-    RageSmoothing     = 0.05,     -- used when Mode == "Rage" (very strong aim)
-    TargetBone        = "Head",  -- "Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"
+    MaxDistance       = 2600,
+    FOVRadius         = 260,     -- a bit larger for jump/flick correction
+    Smoothing         = 0.01,    -- very low = almost instant
+    TargetBone        = "Head", -- primary target
 
     -- Bind
     BindKey           = Enum.KeyCode.E,
@@ -71,29 +68,51 @@ local AimbotConfig = {
     TriggerbotOnKey   = false,
 
     -- Magnet aim (crosshair pull, using mousemoverel)
-    MagnetAim         = false,
-    MagnetFOV         = 80,
-    MagnetStrength    = 0.45,
+    MagnetAim         = true,
+    MagnetFOV         = 140,
+    MagnetStrength    = 0.75,
 
-    -- Angle snap (camera rotation limiter)
+    -- Angle snap (camera rotation limiter) – high limit for fast flicks
     AngleSnapEnabled  = true,
-    AngleSnapDegrees  = 7,
+    AngleSnapDegrees  = 60,
 
     -- Recoil compensation (basic camera nudge)
     RCS               = false,
     RCSStrength       = 0.25,
 }
 
--- old internal ESP config no longer used for drawing, but kept for team checks etc.
 local ESPConfig = {
-    Enabled    = false,  -- will not drive Drawing-ESP now
-    TeamCheck  = false,
-    ShowNames  = true,
-    ShowBoxes  = true,
+    Enabled        = false,
+
+    -- Team / visibility
+    TeamCheck      = false,
+
+    -- Main ESP
+    Boxes          = true,
+    Tracers        = false,
+    TracerOrigin   = "Bottom", -- "Bottom", "Center", "Top"
+
+    -- Skeleton & world
+    Skeleton       = false,
+    HeadDot        = false,
+    ViewTracers    = false,    -- view-line from enemy head
+    Chams3D        = false,
+    ChamsTransparency = 0.5,
+
+    -- Info & extras
+    Names          = true,
+    Distance       = true,
+
+    -- Colors (default palette)
+    Color_Main     = Color3.fromRGB(90, 185, 255),
+    Color_Box      = Color3.fromRGB(90, 185, 255),
+    Color_Tracer   = Color3.fromRGB(130, 210, 255),
+    Color_Skeleton = Color3.fromRGB(0, 255, 170),
+    Color_HeadDot  = Color3.fromRGB(255, 255, 255),
+    Color_Chams    = Color3.fromRGB(40, 90, 255),
 }
 
 local MiscConfig = {
-    NoReload_Flick     = false,
     InfiniteYield_Once = false, -- track if Infinite Yield has been loaded
 }
 
@@ -113,69 +132,27 @@ local mouse1release = mouse1release or (syn and syn.mouse1release) or nil
 local mousemoverel  = mousemoverel  or (syn and syn.mousemoverel)  or nil
 
 ------------------------------------------------------
--- MODE PRESETS (Rage / Legit)
+-- RAYFIELD WINDOW SETUP (COOLER THEME)
 ------------------------------------------------------
 
-local function ApplyAimbotMode()
-    if AimbotConfig.Mode == "Rage" then
-        -- Very strong lock, big FOV, no vis check
-        AimbotConfig.Smoothing         = AimbotConfig.RageSmoothing
-        AimbotConfig.VisibleCheck      = false
-        AimbotConfig.AutoShoot         = true
-        AimbotConfig.AutoShootWhileKey = false
-        AimbotConfig.MaxDistance       = 2600
-        AimbotConfig.FOVRadius         = 999
-        AimbotConfig.Priority          = "FOV"
-        AimbotConfig.MagnetAim         = false
-        AimbotConfig.Triggerbot        = false
+local IceNebulaTheme = {
+    PrimaryColor      = Color3.fromRGB(90, 185, 255),   -- Accent / highlights
+    SecondaryColor    = Color3.fromRGB(18, 26, 64),     -- Header / tab background
+    Background        = Color3.fromRGB(4, 8, 26),       -- Main background
+    Divider           = Color3.fromRGB(110, 180, 255),  -- Lines between sections
+    TextColor         = Color3.fromRGB(220, 235, 255),  -- General text
 
-    elseif AimbotConfig.Mode == "Legit" then
-        -- Smaller FOV, smoother and more human-like
-        AimbotConfig.Smoothing         = 0.35
-        AimbotConfig.VisibleCheck      = true
-        AimbotConfig.AutoShoot         = false
-        AimbotConfig.AutoShootWhileKey = true
-        AimbotConfig.MaxDistance       = 1500
-        AimbotConfig.FOVRadius         = 140
-        AimbotConfig.Priority          = "FOV"
-        AimbotConfig.MagnetAim         = true
-
-    elseif AimbotConfig.Mode == "Custom" then
-        return
-    end
-
-    print("[FrostHub DEBUG] Mode applied:", AimbotConfig.Mode,
-        "MaxDist=", AimbotConfig.MaxDistance,
-        "FOV=", AimbotConfig.FOVRadius,
-        "Smooth=", AimbotConfig.Smoothing,
-        "Vis=", AimbotConfig.VisibleCheck,
-        "AutoShoot=", AimbotConfig.AutoShoot
-    )
-end
-
-ApplyAimbotMode()
-
-------------------------------------------------------
--- RAYFIELD WINDOW SETUP
-------------------------------------------------------
-
-local BlueTheme = {
-    PrimaryColor      = Color3.fromRGB(55, 145, 255),
-    SecondaryColor    = Color3.fromRGB(20, 32, 70),
-    Background        = Color3.fromRGB(8, 14, 34),
-    Divider           = Color3.fromRGB(70, 105, 180),
-    TextColor         = Color3.fromRGB(230, 240, 255),
-    ElementBackground = Color3.fromRGB(15, 25, 55),
-    ElementStroke     = Color3.fromRGB(80, 130, 215),
-    ElementText       = Color3.fromRGB(220, 230, 255),
-    ElementBorder     = Color3.fromRGB(0, 0, 0),
-    Selected          = Color3.fromRGB(90, 170, 255)
+    ElementBackground = Color3.fromRGB(12, 18, 42),     -- Frames / buttons
+    ElementStroke     = Color3.fromRGB(70, 130, 255),   -- Outline glow
+    ElementText       = Color3.fromRGB(230, 240, 255),  -- Text on elements
+    ElementBorder     = Color3.fromRGB(0, 0, 0),        -- Hard border (thin)
+    Selected          = Color3.fromRGB(130, 210, 255),  -- Selected state
 }
 
 local Window = Rayfield:CreateWindow({
-    Name = "WINTER HUB | v1.0",
+    Name = "❄ WINTER HUB | v1.0",
     LoadingTitle = "Frost Hub",
-    LoadingSubtitle = "Aimbot | ESP | Flick",
+    LoadingSubtitle = "Aimbot • ESP • Utility",
 
     KeySystem = true,
     KeySettings = {
@@ -189,48 +166,26 @@ local Window = Rayfield:CreateWindow({
         FolderName = nil,
         FileName = "FrostHubConfig"
     },
-    Theme = BlueTheme
+
+    Theme = IceNebulaTheme
 })
 
 ------------------------------------------------------
--- MAIN TAB
+-- MAIN TAB (NO TEXT)
 ------------------------------------------------------
 
 local MainTab = Window:CreateTab("Main", 4483362458)
-
-MainTab:CreateSection("Overview")
-
-MainTab:CreateParagraph({
-    Title = "Frost Hub",
-    Content = "Rage / Legit / Custom aimbot, FOV/bone targeting, Triggerbot, Magnet Aim, Angle Snap, ESP and Flick No‑Reload.",
-})
-
-MainTab:CreateParagraph({
-    Title = "Quick Tips",
-    Content = "1) Pick Rage/Legit/Custom. 2) Set FOV + Smoothing. 3) Use Triggerbot for crosshair fire, Aimbot for camera aim, Magnet for crosshair pull.",
-})
+MainTab:CreateSection("Winter Hub")
 
 ------------------------------------------------------
--- AIMBOT TAB (REWORKED)
+-- AIMBOT TAB (SINGLE EXTREME-PRECISION MODE)
 ------------------------------------------------------
 
 local AimbotTab = Window:CreateTab("Aimbot", 4483362458)
-AimbotTab:CreateSection("Mode & Toggles")
-
-AimbotTab:CreateDropdown({
-    Name = "Aimbot Mode",
-    Options = {"Rage", "Legit", "Custom"},
-    CurrentOption = AimbotConfig.Mode,
-    Flag = "Frost_AimbotModeType",
-    Callback = function(Option)
-        AimbotConfig.Mode = Option
-        playClick()
-        ApplyAimbotMode()
-    end,
-})
+AimbotTab:CreateSection("Aimbot Toggle")
 
 AimbotTab:CreateToggle({
-    Name = "Enable Aimbot",
+    Name = "Enable Aimbot (Hyper Precise)",
     CurrentValue = AimbotConfig.Enabled,
     Flag = "Frost_AimbotEnabled",
     Callback = function(Value)
@@ -287,7 +242,7 @@ AimbotTab:CreateSlider({
 
 AimbotTab:CreateSlider({
     Name = "Aimbot FOV (pixels)",
-    Range = {40, 500},
+    Range = {40, 600},
     Increment = 5,
     CurrentValue = AimbotConfig.FOVRadius,
     Flag = "Frost_FOVRadius",
@@ -311,13 +266,13 @@ AimbotTab:CreateDropdown({
 AimbotTab:CreateSection("Smoothing, Angle Snap & Checks")
 
 AimbotTab:CreateSlider({
-    Name = "Smooth Aimbot Strength (lower = stronger)",
-    Range = {2, 100},
+    Name = "Smooth Strength (lower = stronger)",
+    Range = {1, 100},
     Increment = 1,
-    CurrentValue = math.floor((AimbotConfig.Smoothing or 0.35) * 100),
+    CurrentValue = math.floor((AimbotConfig.Smoothing or 0.01) * 100),
     Flag = "Frost_Smoothing",
     Callback = function(Value)
-        local mapped = math.clamp(Value / 100, 0.02, 1)
+        local mapped = math.clamp(Value / 100, 0.005, 1)
         AimbotConfig.Smoothing = mapped
         print("[FrostHub DEBUG] Smoothing:", mapped)
     end,
@@ -335,12 +290,12 @@ AimbotTab:CreateToggle({
 
 AimbotTab:CreateSlider({
     Name = "Angle Snap Max Degrees/Frame",
-    Range = {1, 45},
+    Range = {10, 90},
     Increment = 1,
     CurrentValue = AimbotConfig.AngleSnapDegrees,
     Flag = "Frost_AngleSnapDegrees",
     Callback = function(Value)
-        AimbotConfig.AngleSnapDegrees = math.clamp(Value, 1, 90)
+        AimbotConfig.AngleSnapDegrees = math.clamp(Value, 10, 90)
         print("[FrostHub DEBUG] AngleSnapDegrees:", AimbotConfig.AngleSnapDegrees)
     end,
 })
@@ -467,7 +422,7 @@ AimbotTab:CreateToggle({
 
 AimbotTab:CreateSlider({
     Name = "Magnet FOV (pixels)",
-    Range = {20, 250},
+    Range = {20, 300},
     Increment = 5,
     CurrentValue = AimbotConfig.MagnetFOV,
     Flag = "Frost_MagnetFOV",
@@ -480,7 +435,7 @@ AimbotTab:CreateSlider({
     Name = "Magnet Strength",
     Range = {5, 100},
     Increment = 5,
-    CurrentValue = math.floor((AimbotConfig.MagnetStrength or 0.45) * 100),
+    CurrentValue = math.floor((AimbotConfig.MagnetStrength or 0.75) * 100),
     Flag = "Frost_MagnetStrength",
     Callback = function(Value)
         AimbotConfig.MagnetStrength = math.clamp(Value / 100, 0.05, 1)
@@ -547,89 +502,224 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
 end)
 
 ------------------------------------------------------
--- ESP TAB (Dinas ESP ONLY)
+-- ESP TAB (INTERNAL ESP, NO DINAS)
 ------------------------------------------------------
 
 local ESPTab = Window:CreateTab("ESP", 4483362458)
-ESPTab:CreateSection("Dinas Universal ESP")
 
-ESPTab:CreateParagraph({
-    Title = "External ESP",
-    Content = "Uses Dinas Universal ESP script. Internal Drawing ESP has been replaced.",
-})
+--------------------------------------------------
+-- Main ESP | Master Switch, Team Check, Boxes, Tracers, Tracer Origin
+--------------------------------------------------
 
--- track if we've loaded Dinas at least once
-local DinasESP_Loaded = false
+ESPTab:CreateSection("Main ESP")
 
--- button: load / reload
-ESPTab:CreateButton({
-    Name = "Load / Reload Dinas ESP",
-    Callback = function()
-        playClick()
-        pcall(function()
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/rblxscriptsdotnet/roblox-scripts/refs/heads/main/Dinas%20Universal%20ESP", true))()
-            DinasESP_Loaded = true
-            print("[FrostHub DEBUG] Dinas Universal ESP loaded.")
-        end)
-    end,
-})
-
--- simple "refresh" button (just re-loads again)
-ESPTab:CreateButton({
-    Name = "Refresh ESP", 
-    Callback = function()
-        playClick()
-        if DinasESP_Loaded then
-            pcall(function()
-                loadstring(game:HttpGet("https://raw.githubusercontent.com/rblxscriptsdotnet/roblox-scripts/refs/heads/main/Dinas%20Universal%20ESP", true))()
-                print("[FrostHub DEBUG] Dinas ESP refreshed.")
-            end)
-        else
-            pcall(function()
-                loadstring(game:HttpGet("https://raw.githubusercontent.com/rblxscriptsdotnet/roblox-scripts/refs/heads/main/Dinas%20Universal%20ESP", true))()
-                DinasESP_Loaded = true
-                print("[FrostHub DEBUG] Dinas ESP loaded from refresh button.")
-            end)
-        end
-    end,
-})
-
-ESPTab:CreateParagraph({
-    Title = "Note",
-    Content = "Dinas ESP controls (colors, team check, etc.) are inside the Dinas script itself.",
-})
-
-------------------------------------------------------
--- MISC TAB (Flick no‑reload + Infinite Yield toggle)
-------------------------------------------------------
-
-local MiscTab = Window:CreateTab("MISC", 4483362458)
-MiscTab:CreateSection("Flick Support")
-
-MiscTab:CreateParagraph({
-    Title = "Flick No‑Reload",
-    Content = "Removes reload/ammo limits on Flick guns (client-side). Needs getgc.",
-})
-
-MiscTab:CreateToggle({
-    Name = "No Reload (Flick)",
-    CurrentValue = MiscConfig.NoReload_Flick,
-    Flag = "Frost_NoReloadFlick",
+ESPTab:CreateToggle({
+    Name = "ESP Master Switch",
+    CurrentValue = ESPConfig.Enabled,
+    Flag = "Frost_ESPEnabled",
     Callback = function(Value)
-        MiscConfig.NoReload_Flick = Value
+        ESPConfig.Enabled = Value
         playClick()
     end,
 })
 
-MiscTab:CreateButton({
-    Name = "Rescan Flick Guns (Debug)",
-    Callback = function()
+ESPTab:CreateToggle({
+    Name = "Team Check",
+    CurrentValue = ESPConfig.TeamCheck,
+    Flag = "Frost_ESP_TeamCheck",
+    Callback = function(Value)
+        ESPConfig.TeamCheck = Value
         playClick()
-        if getgc then
-            scanFlickGuns()
-        end
     end,
 })
+
+ESPTab:CreateToggle({
+    Name = "Boxes",
+    CurrentValue = ESPConfig.Boxes,
+    Flag = "Frost_ESP_Boxes",
+    Callback = function(Value)
+        ESPConfig.Boxes = Value
+        playClick()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Tracers",
+    CurrentValue = ESPConfig.Tracers,
+    Flag = "Frost_ESP_Tracers",
+    Callback = function(Value)
+        ESPConfig.Tracers = Value
+        playClick()
+    end,
+})
+
+ESPTab:CreateDropdown({
+    Name = "Tracer Origin",
+    Options = {"Bottom", "Center", "Top"},
+    CurrentOption = ESPConfig.TracerOrigin,
+    Flag = "Frost_ESP_TracerOrigin",
+    Callback = function(Option)
+        ESPConfig.TracerOrigin = Option
+        playClick()
+    end,
+})
+
+--------------------------------------------------
+-- Skeleton & World | Skeleton, Head Dot, View Tracers, Chams 3D, Chams Transparency
+--------------------------------------------------
+
+ESPTab:CreateSection("Skeleton & World")
+
+ESPTab:CreateToggle({
+    Name = "Skeleton",
+    CurrentValue = ESPConfig.Skeleton,
+    Flag = "Frost_ESP_Skeleton",
+    Callback = function(Value)
+        ESPConfig.Skeleton = Value
+        playClick()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Head Dot",
+    CurrentValue = ESPConfig.HeadDot,
+    Flag = "Frost_ESP_HeadDot",
+    Callback = function(Value)
+        ESPConfig.HeadDot = Value
+        playClick()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "View Tracers (from head)",
+    CurrentValue = ESPConfig.ViewTracers,
+    Flag = "Frost_ESP_ViewTracers",
+    Callback = function(Value)
+        ESPConfig.ViewTracers = Value
+        playClick()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Chams 3D",
+    CurrentValue = ESPConfig.Chams3D,
+    Flag = "Frost_ESP_Chams3D",
+    Callback = function(Value)
+        ESPConfig.Chams3D = Value
+        playClick()
+    end,
+})
+
+ESPTab:CreateSlider({
+    Name = "Chams Transparency",
+    Range = {0, 100},
+    Increment = 5,
+    CurrentValue = math.floor((1 - ESPConfig.ChamsTransparency) * 100),
+    Flag = "Frost_ESP_ChamsTrans",
+    Callback = function(Value)
+        local alpha = 1 - (Value / 100)
+        ESPConfig.ChamsTransparency = math.clamp(alpha, 0, 1)
+        playClick()
+    end,
+})
+
+--------------------------------------------------
+-- Info & Extras | Names, Distance
+--------------------------------------------------
+
+ESPTab:CreateSection("Info & Extras")
+
+ESPTab:CreateToggle({
+    Name = "Names",
+    CurrentValue = ESPConfig.Names,
+    Flag = "Frost_ESP_Names",
+    Callback = function(Value)
+        ESPConfig.Names = Value
+        playClick()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Distance",
+    CurrentValue = ESPConfig.Distance,
+    Flag = "Frost_ESP_Distance",
+    Callback = function(Value)
+        ESPConfig.Distance = Value
+        playClick()
+    end,
+})
+
+--------------------------------------------------
+-- Color Palette
+--------------------------------------------------
+
+ESPTab:CreateSection("Color Palette")
+
+ESPTab:CreateColorPicker({
+    Name = "Main Color",
+    Color = ESPConfig.Color_Main,
+    Flag = "Frost_ESP_MainColor",
+    Callback = function(Color)
+        ESPConfig.Color_Main = Color
+        playClick()
+    end,
+})
+
+ESPTab:CreateColorPicker({
+    Name = "Box Color",
+    Color = ESPConfig.Color_Box,
+    Flag = "Frost_ESP_BoxColor",
+    Callback = function(Color)
+        ESPConfig.Color_Box = Color
+        playClick()
+    end,
+})
+
+ESPTab:CreateColorPicker({
+    Name = "Tracer Color",
+    Color = ESPConfig.Color_Tracer,
+    Flag = "Frost_ESP_TracerColor",
+    Callback = function(Color)
+        ESPConfig.Color_Tracer = Color
+        playClick()
+    end,
+})
+
+ESPTab:CreateColorPicker({
+    Name = "Skeleton Color",
+    Color = ESPConfig.Color_Skeleton,
+    Flag = "Frost_ESP_SkelColor",
+    Callback = function(Color)
+        ESPConfig.Color_Skeleton = Color
+        playClick()
+    end,
+})
+
+ESPTab:CreateColorPicker({
+    Name = "Head Dot Color",
+    Color = ESPConfig.Color_HeadDot,
+    Flag = "Frost_ESP_HeadDotColor",
+    Callback = function(Color)
+        ESPConfig.Color_HeadDot = Color
+        playClick()
+    end,
+})
+
+ESPTab:CreateColorPicker({
+    Name = "Chams Color",
+    Color = ESPConfig.Color_Chams,
+    Flag = "Frost_ESP_ChamsColor",
+    Callback = function(Color)
+        ESPConfig.Color_Chams = Color
+        playClick()
+    end,
+})
+
+------------------------------------------------------
+-- MISC TAB (ONLY INFINITE YIELD, FLICK ITEMS REMOVED)
+------------------------------------------------------
+
+local MiscTab = Window:CreateTab("Misc", 4483362458)
 
 MiscTab:CreateSection("Infinite Yield Admin")
 
@@ -642,7 +732,6 @@ InfiniteYield_Toggle = MiscTab:CreateToggle({
     Callback = function(Value)
         playClick()
         if Value then
-            -- load Infinite Yield once when toggled ON
             if not MiscConfig.InfiniteYield_Once then
                 MiscConfig.InfiniteYield_Once = true
                 pcall(function()
@@ -653,99 +742,128 @@ InfiniteYield_Toggle = MiscTab:CreateToggle({
                 print("[FrostHub DEBUG] Infinite Yield already loaded previously.")
             end
         else
-            -- cannot fully unload Infinite Yield; this just turns the toggle off visually
             print("[FrostHub DEBUG] Infinite Yield toggle set to OFF (script remains loaded).")
         end
     end,
 })
 
 ------------------------------------------------------
--- FLICK GUN HOOKING
+-- ESP DRAWING IMPLEMENTATION (INTERNAL)
 ------------------------------------------------------
 
-local FlickGuns = {}
-local lastScanTime = 0
-local scanInterval = 8
+local camera = Workspace.CurrentCamera
+local Drawing = Drawing or nil -- executor-provided Drawing API
 
-local function safeRawget(tbl, key)
-    local ok, result = pcall(rawget, tbl, key)
-    if ok then return result end
-    return nil
-end
+local ESPObjects = {}
 
-local function isGunTable(obj)
-    if type(obj) ~= "table" then return false end
+local function createESPObject(plr)
+    local esp = {
+        Player   = plr,
+        Character= nil,
+        Humanoid = nil,
+        RootPart = nil,
 
-    local ammoLike = safeRawget(obj, "Ammo")
-        or safeRawget(obj, "CurrentAmmo")
-        or safeRawget(obj, "Mag")
-        or safeRawget(obj, "Clip")
-        or safeRawget(obj, "Bullets")
-        or safeRawget(obj, "AmmoInMag")
+        Box      = Drawing and Drawing.new("Square") or nil,
+        Tracer   = Drawing and Drawing.new("Line") or nil,
+        Name     = Drawing and Drawing.new("Text") or nil,
+        Dist     = Drawing and Drawing.new("Text") or nil,
+        HeadDot  = Drawing and Drawing.new("Circle") or nil,
+        ViewLine = Drawing and Drawing.new("Line") or nil,
 
-    local reloadLike = safeRawget(obj, "ReloadTime")
-        or safeRawget(obj, "Reload")
-        or safeRawget(obj, "Reloading")
+        SkeletonLines = {}, -- table of Line objects
+        ChamsParts    = {}, -- Highlight instances
+    }
 
-    return ammoLike ~= nil and reloadLike ~= nil
-end
-
-function scanFlickGuns()
-    if not getgc then
-        print("[FrostHub DEBUG] getgc not supported, Flick No‑Reload disabled.")
-        return
+    if esp.Box then
+        esp.Box.Thickness = 1.5
+        esp.Box.Filled    = false
+        esp.Box.Color     = ESPConfig.Color_Box
     end
 
-    FlickGuns = {}
+    if esp.Tracer then
+        esp.Tracer.Thickness = 1
+        esp.Tracer.Color     = ESPConfig.Color_Tracer
+    end
 
-    for _, obj in ipairs(getgc(true)) do
-        if isGunTable(obj) then
-            table.insert(FlickGuns, obj)
+    if esp.ViewLine then
+        esp.ViewLine.Thickness = 1
+        esp.ViewLine.Color     = ESPConfig.Color_Tracer
+    end
+
+    if esp.Name then
+        esp.Name.Size   = 13
+        esp.Name.Center = true
+        esp.Name.Color  = ESPConfig.Color_Main
+        esp.Name.Outline = true
+    end
+
+    if esp.Dist then
+        esp.Dist.Size   = 12
+        esp.Dist.Center = true
+        esp.Dist.Color  = ESPConfig.Color_Main
+        esp.Dist.Outline = true
+    end
+
+    if esp.HeadDot then
+        esp.HeadDot.Filled = true
+        esp.HeadDot.Radius = 3
+        esp.HeadDot.Color  = ESPConfig.Color_HeadDot
+    end
+
+    ESPObjects[plr] = esp
+end
+
+local function clearSkeleton(esp)
+    if not esp.SkeletonLines then return end
+    for _, line in pairs(esp.SkeletonLines) do
+        if typeof(line) == "userdata" and line.Remove then
+            pcall(function() line:Remove() end)
+        end
+    end
+    esp.SkeletonLines = {}
+end
+
+local function clearChams(esp)
+    if not esp.ChamsParts then return end
+    for _, h in pairs(esp.ChamsParts) do
+        if typeof(h) == "Instance" then
+            pcall(function() h:Destroy() end)
+        end
+    end
+    esp.ChamsParts = {}
+end
+
+local function removeESPObject(plr)
+    local esp = ESPObjects[plr]
+    if not esp then return end
+
+    clearSkeleton(esp)
+    clearChams(esp)
+
+    for _, obj in pairs(esp) do
+        if typeof(obj) == "userdata" and obj.Remove then
+            pcall(function() obj:Remove() end)
         end
     end
 
-    print("[FrostHub DEBUG] Flick gun tables found:", #FlickGuns)
+    ESPObjects[plr] = nil
 end
 
-local function patchGun(gun)
-    pcall(function()
-        if gun._FH_Patched then return end
-        gun._FH_Patched = true
-        print("[FrostHub DEBUG] Patched Flick gun table:", gun, gun.Name or gun.WeaponName or "[no name]")
-    end)
-end
-
-local function applyFlickPatches()
-    if not MiscConfig.NoReload_Flick then return end
-    if #FlickGuns == 0 then return end
-
-    for _, gun in ipairs(FlickGuns) do
-        pcall(function()
-            patchGun(gun)
-
-            local magSize =
-                safeRawget(gun, "MaxAmmo") or
-                safeRawget(gun, "Clip") or
-                safeRawget(gun, "Mag") or
-                safeRawget(gun, "AmmoInMag") or
-                safeRawget(gun, "Ammo") or
-                30
-
-            if gun.ReloadTime ~= nil then gun.ReloadTime = 0 end
-            if type(gun.Reload) == "number" then gun.Reload = 0 end
-
-            if gun.Ammo ~= nil and gun.Ammo < magSize then gun.Ammo = magSize end
-            if gun.CurrentAmmo ~= nil and gun.CurrentAmmo < magSize then gun.CurrentAmmo = magSize end
-            if gun.Mag ~= nil and gun.Mag < magSize then gun.Mag = magSize end
-            if gun.Clip ~= nil and gun.Clip < magSize then gun.Clip = magSize end
-            if gun.AmmoInMag ~= nil and gun.AmmoInMag < magSize then gun.AmmoInMag = magSize end
-            if gun.Bullets ~= nil and gun.Bullets < magSize then gun.Bullets = magSize end
-
-            if gun.MaxAmmo ~= nil and gun.MaxAmmo < 9999 then gun.MaxAmmo = 9999 end
-            if gun.StoredAmmo ~= nil and gun.StoredAmmo < 9999 then gun.StoredAmmo = 9999 end
-        end)
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr ~= LocalPlayer then
+        createESPObject(plr)
     end
 end
+
+Players.PlayerAdded:Connect(function(plr)
+    if plr ~= LocalPlayer then
+        createESPObject(plr)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(plr)
+    removeESPObject(plr)
+end)
 
 ------------------------------------------------------
 -- CORE HELPERS (PLAYERS, VISIBILITY, BOX)
@@ -805,12 +923,6 @@ local function isVisible(fromPos, targetPart, ignoreList)
 end
 
 ------------------------------------------------------
--- (OLD) ESP OBJECTS REMOVED - USING DINAS INSTEAD
-------------------------------------------------------
--- Internal Drawing ESP code is removed/redundant because ESP is now handled
--- entirely by the external Dinas Universal ESP script.
-
-------------------------------------------------------
 -- TARGET SELECTION (FOV/Distance/Nearest)
 ------------------------------------------------------
 
@@ -828,8 +940,10 @@ local function getBestTarget(camera)
                 continue
             end
 
+            local char = plr.Character
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
             local part = getTargetPart(plr)
-            if part and part:IsA("BasePart") then
+            if part and part:IsA("BasePart") and hum and hum.Health > 0 then
                 local worldPos = part.Position
                 local dist3D = (worldPos - camPos).Magnitude
                 if dist3D <= AimbotConfig.MaxDistance then
@@ -853,8 +967,8 @@ local function getBestTarget(camera)
                                 score = dist3D
                             elseif AimbotConfig.Priority == "Nearest" then
                                 score = dist3D * 0.5 + fovDist * 0.5
-                            else -- FOV
-                                score = fovDist * 2 + dist3D * 0.02
+                            else -- FOV priority
+                                score = fovDist * 1.5 + dist3D * 0.02
                             end
 
                             if score < bestScore then
@@ -872,7 +986,7 @@ local function getBestTarget(camera)
 end
 
 ------------------------------------------------------
--- HELPER: get screen-space box for trigger (still used)
+-- HELPER: get screen-space box for trigger & ESP
 ------------------------------------------------------
 
 local function getScreenBox(camera, char)
@@ -901,7 +1015,279 @@ local function getScreenBox(camera, char)
 end
 
 ------------------------------------------------------
--- MAIN LOOP (Aimbot, Magnet, Trigger, Autoshoot, Flick)
+-- SKELETON POINTS HELPER
+------------------------------------------------------
+
+local function getSkeletonPoints(char)
+    if not char then return nil end
+
+    local function gp(name)
+        return char:FindFirstChild(name)
+    end
+
+    local head = gp("Head")
+    local hrp  = gp("HumanoidRootPart")
+    local ul   = gp("UpperTorso") or gp("Torso")
+    local ll   = gp("LowerTorso")
+
+    local lArmU = gp("LeftUpperArm") or gp("Left Arm")
+    local lArmL = gp("LeftLowerArm")
+    local lHand = gp("LeftHand") or gp("LeftHand")
+
+    local rArmU = gp("RightUpperArm") or gp("Right Arm")
+    local rArmL = gp("RightLowerArm")
+    local rHand = gp("RightHand")
+
+    local lLegU = gp("LeftUpperLeg") or gp("Left Leg")
+    local lLegL = gp("LeftLowerLeg")
+    local lFoot = gp("LeftFoot")
+
+    local rLegU = gp("RightUpperLeg") or gp("Right Leg")
+    local rLegL = gp("RightLowerLeg")
+    local rFoot = gp("RightFoot")
+
+    return {
+        Head = head,
+        Root = hrp,
+        UpperTorso = ul,
+        LowerTorso = ll,
+
+        LeftUpperArm  = lArmU,
+        LeftLowerArm  = lArmL,
+        LeftHand      = lHand,
+        RightUpperArm = rArmU,
+        RightLowerArm = rArmL,
+        RightHand     = rHand,
+
+        LeftUpperLeg  = lLegU,
+        LeftLowerLeg  = lLegL,
+        LeftFoot      = lFoot,
+        RightUpperLeg = rLegU,
+        RightLowerLeg = rLegL,
+        RightFoot     = rFoot,
+    }
+end
+
+local function ensureLine(list, key)
+    if not list[key] and Drawing then
+        local ln = Drawing.new("Line")
+        ln.Thickness = 1
+        ln.Color     = ESPConfig.Color_Skeleton
+        list[key]    = ln
+    end
+    return list[key]
+end
+
+------------------------------------------------------
+-- ESP UPDATE LOOP
+------------------------------------------------------
+
+local function updateESP()
+    if not Drawing then return end
+
+    for plr, esp in pairs(ESPObjects) do
+        local char = plr.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        local head = char and char:FindFirstChild("Head")
+
+        esp.Character = char
+        esp.Humanoid  = hum
+        esp.RootPart  = hrp
+
+        local isValid = ESPConfig.Enabled and plr ~= LocalPlayer and char and hum and hum.Health > 0 and hrp
+        if isValid then
+            if ESPConfig.TeamCheck and LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
+                isValid = false
+            end
+        end
+
+        if not isValid then
+            if esp.Box then esp.Box.Visible = false end
+            if esp.Tracer then esp.Tracer.Visible = false end
+            if esp.Name then esp.Name.Visible = false end
+            if esp.Dist then esp.Dist.Visible = false end
+            if esp.HeadDot then esp.HeadDot.Visible = false end
+            if esp.ViewLine then esp.ViewLine.Visible = false end
+            clearSkeleton(esp)
+            clearChams(esp)
+            continue
+        end
+
+        local rootPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+        if not onScreen or rootPos.Z <= 0 then
+            if esp.Box then esp.Box.Visible = false end
+            if esp.Tracer then esp.Tracer.Visible = false end
+            if esp.Name then esp.Name.Visible = false end
+            if esp.Dist then esp.Dist.Visible = false end
+            if esp.HeadDot then esp.HeadDot.Visible = false end
+            if esp.ViewLine then esp.ViewLine.Visible = false end
+            clearSkeleton(esp)
+            clearChams(esp)
+            continue
+        end
+
+        local box = getScreenBox(camera, char)
+        local distance = (hrp.Position - camera.CFrame.Position).Magnitude
+
+        -- Box
+        if esp.Box and ESPConfig.Boxes and box then
+            esp.Box.Size     = Vector2.new(box.width, box.height)
+            esp.Box.Position = Vector2.new(box.center.X - box.width/2, box.center.Y - box.height/2)
+            esp.Box.Color    = ESPConfig.Color_Box
+            esp.Box.Visible  = true
+        elseif esp.Box then
+            esp.Box.Visible = false
+        end
+
+        -- Tracers from screen
+        if esp.Tracer and ESPConfig.Tracers then
+            local viewport = camera.ViewportSize
+            local origin
+            if ESPConfig.TracerOrigin == "Top" then
+                origin = Vector2.new(viewport.X/2, 0)
+            elseif ESPConfig.TracerOrigin == "Center" then
+                origin = Vector2.new(viewport.X/2, viewport.Y/2)
+            else
+                origin = Vector2.new(viewport.X/2, viewport.Y)
+            end
+
+            esp.Tracer.From    = origin
+            esp.Tracer.To      = Vector2.new(rootPos.X, rootPos.Y)
+            esp.Tracer.Color   = ESPConfig.Color_Tracer
+            esp.Tracer.Visible = true
+        elseif esp.Tracer then
+            esp.Tracer.Visible = false
+        end
+
+        -- View tracers from enemy head
+        if esp.ViewLine and ESPConfig.ViewTracers and head then
+            local headPos, headOn = camera:WorldToViewportPoint(head.Position)
+            local lookDir = head.CFrame.LookVector
+            local endWorld = head.Position + (lookDir * 10)
+            local endPos, endOn = camera:WorldToViewportPoint(endWorld)
+            if headOn and endOn then
+                esp.ViewLine.From    = Vector2.new(headPos.X, headPos.Y)
+                esp.ViewLine.To      = Vector2.new(endPos.X, endPos.Y)
+                esp.ViewLine.Color   = ESPConfig.Color_Tracer
+                esp.ViewLine.Visible = true
+            else
+                esp.ViewLine.Visible = false
+            end
+        elseif esp.ViewLine then
+            esp.ViewLine.Visible = false
+        end
+
+        -- Name
+        if esp.Name and ESPConfig.Names then
+            esp.Name.Text     = plr.Name
+            esp.Name.Position = Vector2.new(rootPos.X, rootPos.Y - (box and box.height/2 + 12 or 20))
+            esp.Name.Color    = ESPConfig.Color_Main
+            esp.Name.Visible  = true
+        elseif esp.Name then
+            esp.Name.Visible = false
+        end
+
+        -- Distance
+        if esp.Dist and ESPConfig.Distance then
+            esp.Dist.Text     = string.format("%.0f studs", distance)
+            esp.Dist.Position = Vector2.new(rootPos.X, rootPos.Y + (box and box.height/2 + 12 or 20))
+            esp.Dist.Color    = ESPConfig.Color_Main
+            esp.Dist.Visible  = true
+        elseif esp.Dist then
+            esp.Dist.Visible = false
+        end
+
+        -- Head dot
+        if esp.HeadDot and ESPConfig.HeadDot and head then
+            local headPos, headOnScreen = camera:WorldToViewportPoint(head.Position)
+            if headOnScreen and headPos.Z > 0 then
+                esp.HeadDot.Position = Vector2.new(headPos.X, headPos.Y)
+                esp.HeadDot.Color    = ESPConfig.Color_HeadDot
+                esp.HeadDot.Visible  = true
+            else
+                esp.HeadDot.Visible  = false
+            end
+        elseif esp.HeadDot then
+            esp.HeadDot.Visible = false
+        end
+
+        -- Skeleton
+        clearSkeleton(esp) -- rebuild each frame (safer for R15/R6 mix, still light)
+        if ESPConfig.Skeleton then
+            local points = getSkeletonPoints(char)
+            if points and points.Head and points.UpperTorso and points.Root then
+                local function worldToVec3(part)
+                    local p, vis = camera:WorldToViewportPoint(part.Position)
+                    if not vis or p.Z <= 0 then return nil end
+                    return Vector2.new(p.X, p.Y)
+                end
+
+                local function drawBone(aName, bName, key)
+                    local a = points[aName]
+                    local b = points[bName]
+                    if a and b then
+                        local a2 = worldToVec3(a)
+                        local b2 = worldToVec3(b)
+                        if a2 and b2 then
+                            local line = ensureLine(esp.SkeletonLines, key)
+                            if line then
+                                line.From    = a2
+                                line.To      = b2
+                                line.Color   = ESPConfig.Color_Skeleton
+                                line.Visible = true
+                            end
+                        end
+                    end
+                end
+
+                -- torso
+                drawBone("Head", "UpperTorso", "Head_UT")
+                if points.LowerTorso then
+                    drawBone("UpperTorso", "LowerTorso", "UT_LT")
+                    drawBone("LowerTorso", "Root", "LT_Root")
+                else
+                    drawBone("UpperTorso", "Root", "UT_Root")
+                end
+
+                -- arms
+                drawBone("UpperTorso", "LeftUpperArm", "UT_LUA")
+                drawBone("LeftUpperArm", "LeftLowerArm", "LUA_LLA")
+                drawBone("LeftLowerArm", "LeftHand", "LLA_LH")
+
+                drawBone("UpperTorso", "RightUpperArm", "UT_RUA")
+                drawBone("RightUpperArm", "RightLowerArm", "RUA_RLA")
+                drawBone("RightLowerArm", "RightHand", "RLA_RH")
+
+                -- legs
+                drawBone("Root", "LeftUpperLeg", "Root_LUL")
+                drawBone("LeftUpperLeg", "LeftLowerLeg", "LUL_LLL")
+                drawBone("LeftLowerLeg", "LeftFoot", "LLL_LF")
+
+                drawBone("Root", "RightUpperLeg", "Root_RUL")
+                drawBone("RightUpperLeg", "RightLowerLeg", "RUL_RLL")
+                drawBone("RightLowerLeg", "RightFoot", "RLL_RF")
+            end
+        end
+
+        -- Chams 3D (simple Highlight)
+        clearChams(esp)
+        if ESPConfig.Chams3D and char then
+            local highlight = Instance.new("Highlight")
+            highlight.Adornee = char
+            highlight.FillColor = ESPConfig.Color_Chams
+            highlight.OutlineColor = ESPConfig.Color_Chams
+            highlight.FillTransparency = ESPConfig.ChamsTransparency
+            highlight.OutlineTransparency = math.clamp(ESPConfig.ChamsTransparency + 0.2, 0, 1)
+            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            highlight.Parent = char
+            table.insert(esp.ChamsParts, highlight)
+        end
+    end
+end
+
+------------------------------------------------------
+-- MAIN LOOP (Aimbot, Magnet, Trigger, Autoshoot, ESP)
 ------------------------------------------------------
 
 local lastFrameTime   = tick()
@@ -913,7 +1299,7 @@ RunService.RenderStepped:Connect(function()
     local dt  = now - lastFrameTime
     lastFrameTime = now
 
-    local camera = Workspace.CurrentCamera
+    camera = Workspace.CurrentCamera or camera
     if not camera then return end
 
     -- Should we be aiming this frame?
@@ -928,36 +1314,42 @@ RunService.RenderStepped:Connect(function()
     local currentTargetPlayer
 
     --------------------------------------------------
-    -- AIMBOT (camera – cleaned feel)
+    -- AIMBOT (hyper-precise, flick-capable)
     --------------------------------------------------
     if AimbotConfig.Enabled and shouldAim then
         currentTargetPlayer = getBestTarget(camera)
         if currentTargetPlayer and currentTargetPlayer.Character then
+            -- small vertical prediction for jumping (aim a bit above bone)
             local part = getTargetPart(currentTargetPlayer)
             if part and part:IsA("BasePart") then
+                local char = currentTargetPlayer.Character
+                local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                local predictedOffset = Vector3.new(0, 0, 0)
+                if hum and hum.MoveDirection.Magnitude > 0 then
+                    local vel = char:FindFirstChild("HumanoidRootPart") and char.HumanoidRootPart.Velocity or Vector3.zero
+                    predictedOffset = Vector3.new(0, vel.Y * 0.015, 0) -- light vertical lead
+                end
+
                 currentTargetPart = part
 
                 local camCF     = camera.CFrame
                 local camPos    = camCF.Position
-                local targetPos = part.Position
+                local targetPos = part.Position + predictedOffset
                 local toTarget  = targetPos - camPos
 
                 if toTarget.Magnitude > 1 then
                     local desiredCF = CFrame.new(camPos, camPos + toTarget)
 
-                    -- Base smoothing
-                    local smooth = math.clamp(AimbotConfig.Smoothing or 0.35, 0.02, 1)
-                    if AimbotConfig.Mode == "Rage" then
-                        smooth = math.clamp(AimbotConfig.RageSmoothing or 0.05, 0.01, 0.4)
-                    end
+                    -- Very low smoothing for almost-instant flick
+                    local smooth = math.clamp(AimbotConfig.Smoothing or 0.01, 0.005, 1)
 
-                    -- Optional angle snap (limits rotation per frame)
+                    -- Optional angle snap (limits rotation per frame, high cap -> fast flicks)
                     if AimbotConfig.AngleSnapEnabled then
                         local currentLook = camCF.LookVector
                         local desiredLook = toTarget.Unit
                         local dot = math.clamp(currentLook:Dot(desiredLook), -1, 1)
                         local angle = math.acos(dot)
-                        local maxStep = math.rad(AimbotConfig.AngleSnapDegrees)
+                        local maxStep = math.rad(AimbotConfig.AngleSnapDegrees or 60)
 
                         if angle > maxStep then
                             local axis = currentLook:Cross(desiredLook)
@@ -969,7 +1361,7 @@ RunService.RenderStepped:Connect(function()
                         end
                     end
 
-                    local step = math.clamp(smooth * dt * 90, 0, 1)
+                    local step = math.clamp(smooth * dt * 200, 0, 1)
                     camera.CFrame = camCF:Lerp(desiredCF, step)
                 end
             end
@@ -1085,14 +1477,12 @@ RunService.RenderStepped:Connect(function()
                                 local inTrigger = false
                                 local metric = math.huge
 
-                                -- Bone-based radius check
                                 local distToBone = (mousePos - target2D).Magnitude
                                 if distToBone <= AimbotConfig.TriggerbotFOV then
                                     inTrigger = true
                                     metric = distToBone
                                 end
 
-                                -- Or inside the 2D box body
                                 if box then
                                     local halfW = box.width / 2
                                     local halfH = box.height / 2
@@ -1135,19 +1525,9 @@ RunService.RenderStepped:Connect(function()
     end
 
     --------------------------------------------------
-    -- FLICK PATCHES
+    -- ESP UPDATE
     --------------------------------------------------
-    if MiscConfig.NoReload_Flick then
-        if now - lastScanTime > scanInterval then
-            lastScanTime = now
-            scanFlickGuns()
-        end
-        applyFlickPatches()
-    end
-
-    --------------------------------------------------
-    -- ESP UPDATE -- SKIPPED (Dinas handles ESP)
-    --------------------------------------------------
+    updateESP()
 end)
 
 ------------------------------------------------------
@@ -1157,9 +1537,9 @@ end)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
         Title = "Frost Hub",
-        Text = "Loaded Aimbot / Magnet / Trigger / Flick / ESP Controls (bind: " .. AimbotConfig.BindKey.Name .. ")",
+        Text = "Loaded Aimbot / ESP / Utility (bind: " .. AimbotConfig.BindKey.Name .. ")",
         Duration = 5,
     })
 end)
 
-print("[FrostHub DEBUG] Init complete (Aimbot, Triggerbot, Magnet, Flick No-Reload, Dinas ESP controls, Infinite Yield toggle).")
+print("[FrostHub DEBUG] Init complete (Hyper-Precision Aimbot, Triggerbot, Magnet, Skeleton & Chams ESP, Infinite Yield toggle).")
